@@ -1,0 +1,9 @@
+{
+  "name": "laboratorio-demo-gratuita",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"build": "node build.mjs"},
+  "dependencies": {"@noble/hashes": "2.4.0", "pyodide": "314.0.7"},
+  "devDependencies": {"esbuild": "0.25.12"}
+}

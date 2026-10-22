@@ -6,13 +6,19 @@ No requiere paquetes adicionales para ejecutarse: Python **3.11 o superior**.
 
 ## Compartir una demo mediante enlace
 
-El perfil de evaluación web está preparado en [deploy/README.md](deploy/README.md)
-y [render.yaml](render.yaml). Utiliza datos ficticios, acceso público de visitante
-y colaborador de prueba, y una clave administrativa privada generada en el alojamiento.
-El enlace HTTPS lo asigna Render después de crear la cuenta y desplegar el servicio.
-Esta configuración necesita una instancia y disco persistente; revisa el plan y
-su coste en el proveedor antes de contratarlo. No se ha creado un servicio ni
-aceptado ningún cargo desde este entorno.
+El presupuesto autorizado es **costo cero**. La demo para evaluación se publica
+en **GitHub Pages**, sin servidor de pago, tarjeta ni cuenta adicional. La guía
+está en [deploy/README.md](deploy/README.md). Se retiró la propuesta de pago.
+
+La demo ejecuta las funciones del laboratorio en el navegador y guarda su SQLite
+en IndexedDB. Mantiene los registros al recargar o actualizar el código en la misma
+dirección. Cada navegador tiene una prueba independiente; PC y celular no comparten
+los registros automáticamente. Los botones de respaldo permiten descargar la prueba
+completa y restaurarla en otro navegador. Borrar los datos del sitio elimina esa copia.
+
+Es una demo con personas ficticias; sus perfiles permiten evaluar las pantallas,
+no protegen una base laboral compartida. El uso de datos compartidos requiere
+conectar una base gratuita y permisos del lado servidor en una fase posterior.
 
 La publicación usa una lista explícita de fuentes. Los documentos originales,
 empleados, bases locales y respaldos quedan fuera del repositorio de despliegue.
@@ -142,9 +148,9 @@ El detalle de resultados y límites de validación está en `PROJECT_STATUS.md`.
 
 ## Alcance de la versión de prueba
 
-Los iniciadores locales escuchan exclusivamente en `127.0.0.1`. El perfil web
-se activa solo mediante `web_demo.py`, con origen HTTPS exacto y carpeta de datos
-exclusiva. Permite alojar la demo ficticia que el usuario solicitó para evaluación.
+Los iniciadores locales escuchan exclusivamente en `127.0.0.1`. La publicación
+gratuita usa `browser-demo/` y `.github/workflows/pages.yml`. El perfil alternativo
+`web_demo.py` sigue disponible para un servidor propio, sin contratar alojamiento.
 El uso operativo con empleados o datos reales requiere despliegue revisado por TI.
 No se ha modificado firewall ni importado nombres de empleados para estas pruebas.
 

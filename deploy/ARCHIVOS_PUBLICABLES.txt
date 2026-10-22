@@ -1,6 +1,14 @@
 # Lista explícita para revisar la rama demo-web antes de publicarla.
 # Incluir un archivo aquí no lo sube ni concede permiso para publicar datos reales.
-render.yaml
+.github/workflows/pages.yml
+browser-demo/package.json
+browser-demo/package-lock.json
+browser-demo/build.mjs
+browser-demo/bootstrap.js
+browser-demo/worker.js
+browser-demo/bridge.py
+browser-demo/demo.css
+browser-demo/THIRD_PARTY_NOTICES.txt
 README.md
 PROJECT_STATUS.md
 .gitignore

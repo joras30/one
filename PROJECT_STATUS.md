@@ -16,11 +16,11 @@ botones para completar accesos ficticios y tiempo restante en el bloqueo
 temporal tras seis intentos fallidos. Mensaje claro si el puerto está ocupado.
 Se conservan usuarios, contraseñas, registros y esquema de datos.
 
-Preparación de demo web solicitada por el usuario: perfil HTTPS separado,
-cuentas públicas de evaluación con datos ficticios y administración privada,
-configuración Render de una instancia con disco persistente y guía de cuenta nueva.
-La publicación del servicio depende de la cuenta del titular y de revisar el plan;
-no se ha creado un servicio ni aceptado cargos.
+Presupuesto exigido: costo cero. Se retiró render.yaml y la propuesta de plan de
+pago. Se prepara la demo estática completa en GitHub Pages con Python/WebAssembly,
+SQLite persistida en IndexedDB por navegador y respaldo/restauración descargables.
+Esta demo individual no equivale a una base central compartida. La conexión a
+una base gratuita de servidor queda pendiente de proyecto, migraciones y permisos.
 
 ## Funcionalidades terminadas
 
@@ -82,6 +82,10 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
 - 25 comprobaciones de la demo web con proxy HTTPS y certificado temporales
   exclusivamente locales: visitante, captura, administración privada y móvil.
   No equivalen a un despliegue comprobado en Render.
+- 19 comprobaciones de la publicación gratuita real en navegador: acceso,
+  captura, CSV/XLSX/PDF/SVG, persistencia al recargar, dos pestañas concurrentes,
+  respaldo SQLite comprobado independientemente, restauración en otro navegador,
+  rechazo de respaldo inválido y diseño móvil. Motor sin servidor de pago.
 - Regresiones de bloqueo con reloj simulado, desbloqueo al vencer la espera,
   reinicio sin perder eventos, sesiones separadas y puertos por defecto distintos.
 - Caso de restablecimiento repetido tras el ajuste final: desbloquea al técnico,
@@ -99,8 +103,8 @@ comprobada en navegador emulado, sin afirmar un despliegue de red.
 
 ## Límites y trabajo posterior
 
-- Iniciadores locales y perfil web de evaluación separados. Servicio externo aún
-  pendiente de crear en la cuenta de alojamiento del usuario; revisar plan/coste.
+- Iniciadores locales, perfil HTTPS propio y demo individual gratuita separados.
+  GitHub Pages requiere activación de Actions en los ajustes del repositorio.
 - Catálogo SAP completo pendiente del usuario; solo se precargó el ejemplo confirmado.
 - Importación hasta 8 MB/5.000 filas y exportación hasta 10.000 filas por archivo,
   con rechazo explícito si se supera; no se truncan resultados silenciosamente.
