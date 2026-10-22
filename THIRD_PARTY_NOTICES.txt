@@ -1,0 +1,20 @@
+Third-party runtime components used only by the free browser demonstration:
+
+Pyodide 314.0.7 — Mozilla Public License 2.0.
+Project and corresponding source: https://github.com/pyodide/pyodide
+Distribution: https://www.npmjs.com/package/pyodide/v/314.0.7
+License: https://www.mozilla.org/MPL/2.0/
+The distribution includes CPython and its standard library, provided under the
+Python Software Foundation License and the notices included by those components.
+Python licenses: https://docs.python.org/3/license.html
+
+@noble/hashes 2.4.0 — MIT License.
+Its full license notice is distributed as LICENSE-noble-hashes.txt.
+Corresponding source: https://github.com/paulmillr/noble-hashes
+
+esbuild is a development build tool, licensed under MIT. Its source is available
+at https://github.com/evanw/esbuild. The esbuild executable is not published in
+the browser demonstration.
+
+These notices describe dependencies and do not grant a license to the user's
+application, corporate artwork, original documents or other project materials.
