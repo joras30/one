@@ -1,14 +1,12 @@
-name: Publicar demo gratuita
+name: Construir demo gratuita
 on:
   push:
     branches: [demo-web]
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
-  group: github-pages
+  group: construir-demo-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
@@ -24,16 +22,17 @@ jobs:
         working-directory: browser-demo
       - run: npm run build
         working-directory: browser-demo
-      - uses: actions/upload-pages-artifact@v3
+      - name: Verificar distribución
+        run: |
+          test -f dist/github-pages/index.html
+          test -f dist/github-pages/.nojekyll
+          test -f dist/github-pages/runtime/pyodide.asm.wasm
+          database_file="$(find dist/github-pages -type f \( -iname '*.db' -o -iname '*.sqlite' -o -iname '*.sqlite3' \) -print -quit)"
+          test -z "$database_file"
+      - uses: actions/upload-artifact@v4
         with:
+          name: demo-github-pages
           path: dist/github-pages
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 1
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4

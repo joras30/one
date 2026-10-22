@@ -7,13 +7,11 @@ la propuesta de pago y su archivo render.yaml. No se ha contratado ningún servi
 ## Activar GitHub Pages una vez
 
 1. Abre https://github.com/joras30/one/settings/pages con tu cuenta de GitHub.
-2. En **Build and deployment → Source**, selecciona **GitHub Actions**.
-3. Abre **Actions → Publicar demo gratuita**. Si una ejecución anterior falló
-   porque Pages todavía no estaba activado, pulsa **Re-run all jobs** o inicia
-   **Run workflow** sobre la rama `demo-web`.
-4. Cuando termine `deploy`, GitHub mostrará el enlace real de la demo.
-   La dirección prevista es https://joras30.github.io/one/; compártela después
-   de comprobar que el despliegue terminó y el enlace responde.
+2. En **Build and deployment → Source**, selecciona **Deploy from a branch**.
+3. En **Branch**, selecciona **gh-pages** y la carpeta **/(root)**.
+4. Pulsa **Save**. La rama `gh-pages` ya contiene la distribución preparada.
+5. Espera a que GitHub termine de publicar y abre https://joras30.github.io/one/.
+   Comparte el enlace después de comprobar que responde.
 
 Estos pasos activan Pages, sin contratar un plan. El repositorio debe permanecer
 público para utilizar esta modalidad gratuita. Las bases y documentos de empleados
@@ -49,10 +47,16 @@ confirma en el almacenamiento persistente y conserva la versión anterior.
 
 ## Actualizaciones sin descargar ZIP
 
-Los commits en `demo-web` ejecutan `.github/workflows/pages.yml`: instala las
-dependencias fijadas, construye solo los archivos permitidos y publica en Pages.
-Los evaluadores recargan el enlace. El generador no incluye bases SQLite,
-documentos originales ni empleados reales.
+Los commits en `demo-web` ejecutan **Actions → Construir demo gratuita**
+(`.github/workflows/pages.yml`): instala las dependencias fijadas, construye y
+verifica la distribución y guarda el artefacto `demo-github-pages` durante un día.
+Este workflow no publica el sitio.
+
+Para entregar una actualización, se construye la distribución y se actualiza su
+contenido en la raíz de la rama `gh-pages`, incluido `.nojekyll`. GitHub Pages
+publica los cambios de esa rama. Los evaluadores solo recargan el mismo enlace,
+sin descargar un ZIP. El generador no incluye bases SQLite, documentos originales
+ni empleados reales.
 
 ```sh
 cd browser-demo
@@ -60,7 +64,8 @@ npm ci
 npm run build
 ```
 
-El resultado está en `dist/github-pages/`. La capa gratuita reutiliza
+El resultado que se publica en `gh-pages` está en `dist/github-pages/`.
+La capa gratuita reutiliza
 `APLICACION_ACTUAL/` sin instalar Python ni abrir un servidor en el equipo evaluador.
 
 ## Datos compartidos a costo cero

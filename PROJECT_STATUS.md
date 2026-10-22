@@ -22,6 +22,13 @@ SQLite persistida en IndexedDB por navegador y respaldo/restauración descargabl
 Esta demo individual no equivale a una base central compartida. La conexión a
 una base gratuita de servidor queda pendiente de proyecto, migraciones y permisos.
 
+La distribución está publicada en la rama `gh-pages` (30 archivos, 14.225.372 bytes,
+sin bases SQLite). Falta seleccionar en **Settings → Pages**:
+**Deploy from a branch → gh-pages → /(root) → Save** y comprobar el sitio resultante.
+Las siguientes entregas actualizan el contenido compilado de esa rama; los
+visitantes recargan el mismo enlace. El workflow **Construir demo gratuita**
+verifica y guarda el artefacto de `demo-web`, sin permisos ni trabajo de despliegue.
+
 ## Funcionalidades terminadas
 
 - Seis actividades: limpieza o recuperación (una sola), revisión técnica,
@@ -105,7 +112,8 @@ comprobada en navegador emulado, sin afirmar un despliegue de red.
 ## Límites y trabajo posterior
 
 - Iniciadores locales, perfil HTTPS propio y demo individual gratuita separados.
-  GitHub Pages requiere activación de Actions en los ajustes del repositorio.
+  GitHub Pages requiere activar **Deploy from a branch**, rama **gh-pages**,
+  carpeta **/(root)** y guardar en los ajustes del repositorio.
 - Catálogo SAP completo pendiente del usuario; solo se precargó el ejemplo confirmado.
 - Importación hasta 8 MB/5.000 filas y exportación hasta 10.000 filas por archivo,
   con rechazo explícito si se supera; no se truncan resultados silenciosamente.

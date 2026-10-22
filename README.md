@@ -10,6 +10,13 @@ El presupuesto autorizado es **costo cero**. La demo para evaluación se publica
 en **GitHub Pages**, sin servidor de pago, tarjeta ni cuenta adicional. La guía
 está en [deploy/README.md](deploy/README.md). Se retiró la propuesta de pago.
 
+En **Settings → Pages**, elige **Deploy from a branch → gh-pages → /(root) → Save**.
+La distribución ya está en esa rama. GitHub publica sus cambios en
+https://joras30.github.io/one/ después de activar Pages.
+Para entregar mejoras se actualiza la distribución en `gh-pages`; los visitantes
+solo recargan el enlace. El workflow **Construir demo gratuita** de `demo-web`
+construye y verifica un artefacto, sin publicar automáticamente.
+
 La demo ejecuta las funciones del laboratorio en el navegador y guarda su SQLite
 en IndexedDB. Mantiene los registros al recargar o actualizar el código en la misma
 dirección. Cada navegador tiene una prueba independiente; PC y celular no comparten
@@ -149,7 +156,8 @@ El detalle de resultados y límites de validación está en `PROJECT_STATUS.md`.
 ## Alcance de la versión de prueba
 
 Los iniciadores locales escuchan exclusivamente en `127.0.0.1`. La publicación
-gratuita usa `browser-demo/` y `.github/workflows/pages.yml`. El perfil alternativo
+gratuita se construye con `browser-demo/`; `.github/workflows/pages.yml` verifica
+el artefacto y Pages sirve la distribución de `gh-pages`. El perfil alternativo
 `web_demo.py` sigue disponible para un servidor propio, sin contratar alojamiento.
 El uso operativo con empleados o datos reales requiere despliegue revisado por TI.
 No se ha modificado firewall ni importado nombres de empleados para estas pruebas.
