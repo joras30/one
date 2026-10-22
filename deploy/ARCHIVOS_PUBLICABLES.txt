@@ -1,0 +1,27 @@
+# Lista explícita para revisar la rama demo-web antes de publicarla.
+# Incluir un archivo aquí no lo sube ni concede permiso para publicar datos reales.
+render.yaml
+README.md
+PROJECT_STATUS.md
+.gitignore
+APLICACION_ACTUAL/app.py
+APLICACION_ACTUAL/web_demo.py
+APLICACION_ACTUAL/production.py
+APLICACION_ACTUAL/documents.py
+APLICACION_ACTUAL/catalogos.json
+APLICACION_ACTUAL/static/index.html
+APLICACION_ACTUAL/static/app.js
+APLICACION_ACTUAL/static/app.css
+APLICACION_ACTUAL/assets/edesur.png
+APLICACION_ACTUAL/iniciar.bat
+APLICACION_ACTUAL/probar_demo.bat
+APLICACION_ACTUAL/LEEME_PRIMERO.txt
+APLICACION_ACTUAL/tests/test_application.py
+APLICACION_ACTUAL/tests/test_web_demo.py
+tests/test_documents.py
+deploy/README.md
+deploy/ARCHIVOS_PUBLICABLES.txt
+
+# Excluir REFERENCIAS/, DOCUMENTACION/, INSTRUCCION_INICIAL_PARA_CODEX.md,
+# MANIFIESTO.md, datos_locales/, datos_demo/, backups, bases SQLite,
+# archivos de sesión, .env, logs, claves y cualquier material con empleados reales.

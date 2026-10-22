@@ -1,0 +1,83 @@
+LABORATORIO DE MEDIDAS — CONTROL DE PRODUCCIÓN
+VERSIÓN 1.0 DE PRUEBAS LOCALES
+
+PRUEBA RÁPIDA EN WINDOWS
+1. Instala Python 3.11 o superior si el equipo no dispone de él.
+2. Clic derecho sobre el ZIP: Extraer todo...; en WinRAR: Extraer en...
+   Elige una carpeta local autorizada y abre la carpeta extraída.
+3. Entra en APLICACION_ACTUAL y abre probar_demo.bat. Debe estar junto a
+   app.py, production.py, documents.py y las carpetas static y assets.
+   Se abrirá el navegador con datos completamente ficticios.
+   La pantalla debe decir Demostración con datos ficticios. Puedes pulsar
+   Usar acceso de supervisión o Usar acceso de colaborador para completar
+   los campos y después Entrar al sistema.
+4. Puedes probar estos accesos ficticios:
+   Supervisión: usuario supervisor_demo / contraseña LaboratorioDemo2026!
+   Colaborador: usuario 90001 / contraseña 90001
+   Otro colaborador: usuario 90002 / contraseña 90002
+   Visitante: usuario visitante_demo / contraseña VisitanteDemo2026!
+5. Para detener, vuelve a la consola y presiona Ctrl+C.
+
+La demostración usa datos_demo/laboratorio.db, separada de los registros normales.
+No se reinicia al cerrar: los cambios de prueba se conservan. Las credenciales
+anteriores solo existen en el modo demo y no corresponden a personas reales.
+
+SI APARECE "DEMASIADOS INTENTOS"
+Hay un bloqueo temporal después de seis intentos fallidos para ese usuario.
+Dura 15 minutos; la entrega 1.0.2 muestra el tiempo restante. Recargar no lo
+elimina. En esta prueba local puedes cerrar la consola de la aplicación y
+abrir de nuevo probar_demo.bat: se elimina el contador temporal y se conservan
+los usuarios, contraseñas y registros. Si cambiaste tu clave, usa la actual.
+La supervisión puede restablecer al código de empleado el acceso de un técnico
+y quitar su bloqueo temporal desde Colaboradores y accesos.
+Si la pantalla dice Instalación normal, sus cuentas son las creadas allí;
+abre probar_demo.bat para los accesos ficticios de estas instrucciones.
+Desde 1.0.2, demo usa el puerto local 8766 y normal usa 8765. Sus sesiones
+son independientes en el navegador. Si aparece puerto en uso, cierra la
+consola anterior de la aplicación y vuelve a abrir el iniciador.
+
+SI APARECE "can't open file ... app.py" CON UNA RUTA "Temp\Rar$..."
+WinRAR abrió solo el iniciador en una carpeta temporal. Extrae TODO el ZIP
+siguiendo los pasos anteriores y abre el iniciador desde la carpeta extraída.
+Python sí llegó a ejecutarse; el archivo app.py no estaba en esa carpeta.
+Los iniciadores 1.0.1 comprueban los archivos antes de abrir la aplicación.
+
+INSTALACIÓN NORMAL
+Abre iniciar.bat o ejecuta: py app.py
+La primera vez, la pantalla permite crear la cuenta administradora con una clave
+propia de al menos 10 caracteres, distinta de su usuario. No se requieren pip,
+Excel, Node, cuenta Microsoft ni conexión externa para ejecutar esta prueba.
+Si ya hay una base de la versión anterior, conserva la cuenta y los registros;
+se crea un respaldo en datos_locales/backups antes de migrar.
+
+COLABORADORES
+La administración crea la cuenta usando el código de empleado como usuario.
+Para técnicos, la primera contraseña es ese código. Cambiarla es opcional.
+La supervisión puede restablecerla al código si el colaborador la olvida.
+Supervisores y administradores usan contraseña propia. No se consultan claves
+actuales; las contraseñas se guardan como verificadores de hash.
+
+ACTIVIDADES
+Limpieza o recuperación es una sola actividad. Revisión técnica admite SAP
+opcional y conserva las series como texto. Sellado también identifica cada serie.
+Configuración, limpieza y asignación pueden registrar lotes. Recepción acumula
+entregas y pendientes por orden/SAP. Los formularios pueden versionarse sin
+alterar la interpretación del histórico.
+
+ARCHIVOS
+Se pueden descargar tablas CSV/XLSX/PDF y gráficos SVG/PNG. Las importaciones
+CSV/XLSX de revisión y sellado se revisan antes de confirmar y se atribuyen por
+código de empleado. Los archivos admiten límites explícitos; no se recortan
+resultados silenciosamente. Conserva series y códigos como texto en Excel.
+
+MÓVIL Y ALCANCE DE ESTA ENTREGA
+La interfaz se adapta a celular/tableta y PC. Esta prueba escucha solo en la
+misma computadora (127.0.0.1). El acceso desde otros equipos o desde un celular
+requiere un despliegue autorizado; no cambies la dirección ni el firewall.
+No utilices datos reales ni una base sobre unidades compartidas para esta prueba.
+
+RESPALDOS
+Administración puede generar una copia consistente desde la aplicación. Las
+copias locales no sustituyen una política de respaldo en un destino separado.
+El README explica cómo verificar y recuperar una copia con la aplicación detenida.
+No compartas datos_locales, datos_demo, respaldos, sesiones ni credenciales reales.
