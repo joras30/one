@@ -17,7 +17,7 @@ temporal tras seis intentos fallidos. Mensaje claro si el puerto está ocupado.
 Se conservan usuarios, contraseñas, registros y esquema de datos.
 
 Presupuesto exigido: costo cero. Se retiró render.yaml y la propuesta de plan de
-pago. Se prepara la demo estática completa en GitHub Pages con Python/WebAssembly,
+pago. Se implementó la demo estática completa para GitHub Pages con Python/WebAssembly,
 SQLite persistida en IndexedDB por navegador y respaldo/restauración descargables.
 Esta demo individual no equivale a una base central compartida. La conexión a
 una base gratuita de servidor queda pendiente de proyecto, migraciones y permisos.
@@ -86,6 +86,7 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
   captura, CSV/XLSX/PDF/SVG, persistencia al recargar, dos pestañas concurrentes,
   respaldo SQLite comprobado independientemente, restauración en otro navegador,
   rechazo de respaldo inválido y diseño móvil. Motor sin servidor de pago.
+  Se repitió el recorrido bajo una subruta para verificar el alojamiento de Pages.
 - Regresiones de bloqueo con reloj simulado, desbloqueo al vencer la espera,
   reinicio sin perder eventos, sesiones separadas y puertos por defecto distintos.
 - Caso de restablecimiento repetido tras el ajuste final: desbloquea al técnico,

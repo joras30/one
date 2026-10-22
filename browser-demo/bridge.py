@@ -113,4 +113,3 @@ def restore_backup(contents):
     app.init_db()
     with app.database() as db:
         db.execute('DELETE FROM sessions')
-
