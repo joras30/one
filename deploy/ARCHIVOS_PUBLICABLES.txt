@@ -1,6 +1,14 @@
 # Lista explícita para revisar la rama demo-web antes de publicarla.
 # Incluir un archivo aquí no lo sube ni concede permiso para publicar datos reales.
 .github/workflows/pages.yml
+.github/workflows/windows-local.yml
+packaging/build_windows.py
+packaging/smoke_windows.py
+packaging/INICIAR_PRODUCCION.bat
+packaging/INICIAR_RED.bat
+packaging/INICIAR_PRUEBAS.bat
+packaging/RECUPERAR_ADMIN.bat
+packaging/LEEME_FASE1.txt
 browser-demo/package.json
 browser-demo/package-lock.json
 browser-demo/build.mjs
@@ -12,7 +20,9 @@ browser-demo/THIRD_PARTY_NOTICES.txt
 README.md
 PROJECT_STATUS.md
 .gitignore
+.gitattributes
 APLICACION_ACTUAL/app.py
+APLICACION_ACTUAL/foundation.py
 APLICACION_ACTUAL/web_demo.py
 APLICACION_ACTUAL/production.py
 APLICACION_ACTUAL/documents.py
@@ -22,6 +32,14 @@ APLICACION_ACTUAL/catalogos.json
 APLICACION_ACTUAL/static/index.html
 APLICACION_ACTUAL/static/app.js
 APLICACION_ACTUAL/static/app.css
+APLICACION_ACTUAL/static/table-tools.js
+APLICACION_ACTUAL/static/table-tools.css
+APLICACION_ACTUAL/static/profile-avatars.js
+APLICACION_ACTUAL/static/profile-avatars.css
+APLICACION_ACTUAL/static/drilldown.js
+APLICACION_ACTUAL/static/drilldown.css
+APLICACION_ACTUAL/static/foundation-ui.js
+APLICACION_ACTUAL/static/foundation-ui.css
 APLICACION_ACTUAL/assets/edesur.png
 APLICACION_ACTUAL/iniciar.bat
 APLICACION_ACTUAL/probar_demo.bat
@@ -32,15 +50,22 @@ APLICACION_ACTUAL/tests/test_web_demo.py
 APLICACION_ACTUAL/tests/test_lan_v6.py
 APLICACION_ACTUAL/tests/test_windows_bind.py
 APLICACION_ACTUAL/tests/test_v6_http.py
+APLICACION_ACTUAL/tests/test_avatar_http.py
+APLICACION_ACTUAL/tests/test_foundation_http.py
 tests/test_documents.py
 tests/test_documents_v6.py
 tests/test_analytics_v6.py
 tests/test_v6_domain.py
 tests/test_dashboard_visuals.py
 tests/test_visual_analytics.py
+tests/test_interactive_details.py
+tests/test_foundation_v33.py
 tests/run_ci.py
 deploy/README.md
 deploy/RED_LOCAL.md
+deploy/GUIA_RAPIDA.md
+deploy/V33_FASES.md
+deploy/PROMPT_CONTINUIDAD_V33.md
 deploy/ARCHIVOS_PUBLICABLES.txt
 
 # Excluir REFERENCIAS/, DOCUMENTACION/, INSTRUCCION_INICIAL_PARA_CODEX.md,

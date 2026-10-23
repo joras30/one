@@ -5,7 +5,7 @@ if errorlevel 1 goto folder_error
 for %%F in ("app.py" "production.py" "operational.py" "analytics.py" "documents.py" "catalogos.json" "static\index.html" "static\app.js" "static\app.css" "assets\edesur.png") do if not exist "%%~F" goto incomplete_package
 py -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
 if errorlevel 1 goto python_error
-py "%~dp0app.py"
+py "%~dp0app.py" --production
 if errorlevel 1 goto startup_error
 exit /b 0
 

@@ -14,7 +14,7 @@ echo El programa no cambia la IP ni el firewall.
 echo.
 set "LAB_LAN_IP="
 set /p "LAB_LAN_IP=IP privada de esta PC: "
-py -c "import os,runpy,sys; sys.argv=['app.py','--lan-ip',os.environ.get('LAB_LAN_IP','')]; runpy.run_path('app.py',run_name='__main__')"
+py -c "import os,runpy,sys; sys.argv=['app.py','--production','--lan-ip',os.environ.get('LAB_LAN_IP','')]; runpy.run_path('app.py',run_name='__main__')"
 if errorlevel 1 goto startup_error
 exit /b 0
 

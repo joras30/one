@@ -1,5 +1,20 @@
 # Laboratorio de Medidas — Control de Producción
 
+## Especificación vigente y entrega por fases
+
+El solicitante sustituyó la especificación por **V33**, con validación entre fases.
+La versión `33.0-fase1` implementa la base local para revisión: administrador maestro,
+perfil y contraseña obligatorios, equipos por supervisor, auditoría administrativa,
+respaldo dual programado y restauración verificada. La producción comienza sin
+registros; las escrituras operativas están bloqueadas hasta la fase 2. El paquete
+Windows se construye y prueba mediante `windows-local.yml`, con Python incluido.
+
+Las mejoras de interacción y avatares de la etapa 2.2 se conservan en la demo.
+Las secciones históricas siguientes describen entregas V6/2.1; no deben confundirse
+con operación completa V33. Guía y criterios: `deploy/V33_FASES.md`. Resumen para
+continuar: `deploy/PROMPT_CONTINUIDAD_V33.md`. El Excel oficial de siete hojas se
+revisó como referencia privada, sin importar personas ni registros reales.
+
 ## Entrega actual
 
 Versión 2.1 de pruebas controladas, requisitos V6, ampliada desde el prototipo Python/SQLite.

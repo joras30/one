@@ -1,6 +1,31 @@
 # Laboratorio de Medidas — Control de Producción
 
-Aplicación web **2.1 de pruebas controladas**, con los requisitos del modelo V6,
+## Entrega vigente: V33, fase 1 para validación
+
+La producción local se prepara por fases, conforme a la especificación V33 del
+solicitante. **Esta entrega habilita instalación, usuarios, roles, perfil,
+auditoría, respaldo diario dual y restauración. La captura operativa permanece
+bloqueada hasta validar esta base y completar la fase 2.**
+
+El paquete Windows x64 se construye y prueba en Windows y se entrega como versión
+de revisión en [Releases](https://github.com/joras30/one/releases). Incluye Python;
+extrae todo el ZIP y abre `INICIAR_PRODUCCION.bat`, sin instalar paquetes ni usar
+Internet para ejecutar. La guía está en [V33_FASES.md](deploy/V33_FASES.md).
+
+Desde las fuentes: `python APLICACION_ACTUAL/app.py --production`. La primera vez
+crea `admin` y muestra una clave temporal una sola vez en la consola. Debes
+cambiarla y completar el perfil. Los datos quedan en `datos_produccion`, separados
+de la demo. Para compartir en la oficina añade `--lan-ip` con la IP privada fija
+de la PC principal. Los respaldos se configuran en **Instalación y respaldos**.
+
+La demostración gratuita conserva las funciones anteriores V6/2.2 descritas a
+continuación. Sirven para evaluar la interfaz; **no representan la operación V33
+completa**. El Excel de consolidación de 2026 se conserva como referencia privada;
+no se publica ni se precargan registros o personas reales en las pruebas.
+
+## Demostración anterior y funciones conservadas
+
+Aplicación web **2.2 de pruebas controladas**, con los requisitos del modelo V6,
 adaptable a PC, tableta y celular. Amplía el prototipo Python/SQLite conservando
 sus usuarios, revisiones e identificadores; el esquema de datos es **4**.
 No requiere paquetes adicionales para ejecutarse: Python **3.11 o superior**.
@@ -9,6 +34,26 @@ La interfaz usa un tablero industrial oscuro con contadores, curvas temporales,
 anillos de calidad, avances por orden y tablas comparativas por técnico y actividad.
 Los semáforos incluyen texto. Puede ejecutarse en una sola PC o servir una
 misma base a los navegadores de la red de oficina desde la PC principal.
+
+## Usar el tablero paso a paso
+
+La [guía rápida](deploy/GUIA_RAPIDA.md) explica los cuadros, los filtros y las
+descargas con ejemplos. Para comenzar:
+
+1. Elige tus fechas y filtros en **Filtrar información** y pulsa **Aplicar**.
+2. Toca un cuadro, como **Revisiones aprobadas**, para consultar los datos que
+   forman esa cifra. En los gráficos, toca un punto o una categoría.
+3. En la lista, usa **Buscar en esta tabla** o toca un encabezado para ordenar.
+   **Filas por página**, **Anterior** y **Siguiente** permiten recorrerla.
+4. Abre el detalle de un registro cuando necesites comprobarlo. Cierra la ventana
+   para volver a la pantalla anterior y continuar con tus filtros.
+5. Usa **Descargar CSV filtrado** para guardar las filas encontradas en la tabla,
+   o los botones **Excel** y **PDF** de la sección para descargar su informe.
+
+Buscar u ordenar cambia la vista, sin editar la información guardada. En
+**Registros**, la búsqueda de la tabla se limita a la página cargada: utiliza
+los filtros de la sección y su paginación para consultar las demás páginas.
+La guía también explica qué datos permite consultar cada perfil.
 
 ## Compartir la instalación en la oficina
 
@@ -129,6 +174,8 @@ Una base anterior conserva sus accesos; no se sustituye por datos de ejemplo.
   las unidades, además de tasas de rechazo y metas individuales compatibles.
 - Importación supervisada de revisión/sellado, con validación previa y confirmación.
 - Tablas CSV/XLSX/PDF y gráficos SVG/PNG, respetando filtros y permisos.
+- Cuadros y gráficos con acceso a sus datos; tablas con búsqueda, ordenación,
+  páginas y descarga de la vista filtrada, sin modificar el histórico.
 - Visitante limitado a estadísticas agregadas.
 
 Las cantidades de distintas actividades representan operaciones: limpiar y sellar
@@ -202,7 +249,7 @@ en `backups/` dentro de la carpeta de datos. No se cambian contraseñas existent
 La cuenta supervisora original conserva su autoridad administrativa mediante
 el nuevo perfil Administrador; su identificador, contraseña y rol legado se mantienen.
 
-Para actualizar a la versión 2.1, genera un respaldo desde Administración y
+Para actualizar a la versión 2.2, genera un respaldo desde Administración y
 conserva una copia en otro destino autorizado. Cierra la consola de la aplicación
 antes de sustituir el código. Conserva intactas las carpetas `datos_locales`,
 `datos_demo` y sus respaldos; no las reemplaces por una carpeta vacía del paquete.
@@ -249,7 +296,7 @@ Las pruebas usan bases temporales y personas ficticias. `openpyxl` es opcional p
 una comprobación adicional independiente de XLSX; no se necesita para la aplicación.
 El detalle de resultados y límites de validación está en `PROJECT_STATUS.md`.
 
-La integración continua ejecuta 130 pruebas tanto en Windows/Python 3.15.1 como
+La integración continua ejecuta las suites de pruebas en Windows/Python 3.15.1 y
 en Linux/Python 3.12. Ambas plataformas deben pasar antes de publicar la demo.
 Las comprobaciones de red usan loopback; la conexión física de oficina se realiza
 con la IP asignada a la PC principal según `deploy/RED_LOCAL.md`.

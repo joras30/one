@@ -1,0 +1,38 @@
+LABORATORIO DE MEDIDAS - V33 FASE 1 PARA VALIDACION
+
+1. Extrae TODO el ZIP en una carpeta local de la PC principal.
+2. Abre INICIAR_PRODUCCION.bat. No necesitas instalar Python ni tener Internet.
+3. La consola muestra el usuario admin y una clave temporal una sola vez.
+   Conservala mientras entras. Despues del primer acceso debes cambiarla.
+4. Completa el perfil. Abre Instalacion y respaldos para configurar dos destinos
+   externos, en unidades fisicas diferentes entre si y del disco principal.
+5. Crea los accesos del personal. Sus claves temporales se muestran al crearlos.
+6. Para compartir en la oficina, usa INICIAR_RED.bat e introduce la IP privada
+   fija de esta PC. Los demas equipos abren ese enlace en su navegador.
+   La direccion y permisos de red deben corresponder a la configuracion de TI.
+
+ESTA ENTREGA ES LA BASE (FASE 1): instalacion, usuarios, roles, perfil, auditoria,
+respaldo diario y restauracion. La captura operativa V33 esta bloqueada hasta
+validar la fase 1 e implementar y validar la fase 2. No se entrega como sistema
+operativo completo de sellado, bajas ni carga real de produccion todavia.
+
+Produccion guarda su base en datos_produccion al lado del ejecutable.
+INICIAR_PRUEBAS.bat usa otra carpeta datos_demo y datos ficticios.
+No pongas la base SQLite en una carpeta compartida de red. Solo los respaldos
+pueden ir a los destinos externos. La PC y el programa deben permanecer activos
+para la copia programada. Una copia incompleta se identifica como tal.
+
+Restaurar requiere elegir el archivo, verificar su vista previa, escribir un
+motivo, confirmar RESTAURAR e introducir la clave de administracion. Se crea
+una copia previa. Las sesiones se cierran y debes entrar con la clave guardada
+en el respaldo restaurado. Los respaldos contienen informacion de la instalacion.
+
+Si olvidas la clave maestra, cierra el servidor y ejecuta RECUPERAR_ADMIN.bat
+directamente en la PC principal. Escribe el motivo. Se genera otra clave temporal
+y la recuperacion queda auditada. No existe recuperacion maestra por Internet.
+
+Al actualizar, cierra la aplicacion y genera primero un respaldo. Sustituye los
+archivos del programa conservando datos_produccion. Nunca borres esa carpeta.
+El paquete no incluye datos reales ni claves precargadas. Solo es para Windows
+de 64 bits. Su Python va incluido (licencia PSF). Empaquetado con PyInstaller,
+licencia GPL con excepcion que permite distribuir esta aplicacion compilada.

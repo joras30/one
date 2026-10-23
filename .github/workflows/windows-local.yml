@@ -1,0 +1,50 @@
+name: Entregar Windows local V33 fase 1
+on:
+  push:
+    branches: [demo-web]
+    paths: ['APLICACION_ACTUAL/**', 'tests/**', 'packaging/**', '.github/workflows/windows-local.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: windows-local-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check pyinstaller==6.16.0 openpyxl==3.1.5 et-xmlfile==2.0.0
+      - run: python tests/run_ci.py http
+      - run: python tests/run_ci.py domain
+      - run: python packaging/build_windows.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: laboratorio-windows-fase1
+          path: |
+            dist/LABORATORIO_V33_FASE1_WINDOWS.zip
+            dist/LABORATORIO_V33_FASE1_WINDOWS.sha256.txt
+          retention-days: 7
+      - name: Publicar paquete de revisión de fase 1
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = 'v33-fase1-' + context.sha.slice(0,7);
+            let release;
+            try { release = (await github.rest.repos.getReleaseByTag({...context.repo,tag})).data; }
+            catch (error) {
+              if (error.status !== 404) throw error;
+              release = (await github.rest.repos.createRelease({...context.repo,tag_name:tag,target_commitish:context.sha,
+                name:'V33 · Fase 1 local para validación',prerelease:true,
+                body:'Base local Windows x64: usuarios, roles, perfiles, auditoría, respaldo dual y restauración. Python incluido; sin Internet para ejecutar. Captura operativa V33 bloqueada hasta validar esta fase y completar la fase 2. Extraer todo el ZIP y abrir INICIAR_PRODUCCION.bat. El paquete no incluye datos ni claves precargadas.'})).data;
+            }
+            for (const name of ['LABORATORIO_V33_FASE1_WINDOWS.zip','LABORATORIO_V33_FASE1_WINDOWS.sha256.txt']) {
+              if (release.assets.some(asset=>asset.name===name)) continue;
+              await github.rest.repos.uploadReleaseAsset({...context.repo,release_id:release.id,name,
+                data:fs.readFileSync('dist/'+name),headers:{'content-type':'application/octet-stream'}});
+            }
+            core.notice('Descarga de fase 1: ' + release.html_url);

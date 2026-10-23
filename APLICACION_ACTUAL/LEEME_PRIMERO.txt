@@ -1,5 +1,15 @@
+V33 - FASE 1 PARA VALIDACION
+
+La entrega local vigente prepara usuarios, roles, auditoria y respaldos.
+La captura operativa V33 permanece bloqueada hasta validar esta base.
+Usa el paquete Windows compilado y su INICIAR_PRODUCCION.bat; no requiere Python.
+Desde las fuentes: python app.py --production (o iniciar.bat).
+Guia vigente: deploy/V33_FASES.md.
+
+Las instrucciones siguientes pertenecen a la demostracion y etapas anteriores.
+
 LABORATORIO DE MEDIDAS — CONTROL DE PRODUCCIÓN
-VERSIÓN 2.1 DE PRUEBAS CONTROLADAS — MODELO V6 — ESQUEMA 4
+VERSIÓN 2.2 DE PRUEBAS CONTROLADAS — MODELO V6 — ESQUEMA 4
 
 PRUEBA RÁPIDA EN WINDOWS
 1. Instala Python 3.11 o superior si el equipo no dispone de él.

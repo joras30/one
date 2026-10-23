@@ -13,6 +13,7 @@ venv/
 *.db-shm
 */datos_locales/
 */datos_demo/
+*/datos_produccion/
 .pytest_cache/
 *.log
 *.bak
@@ -26,3 +27,5 @@ venv/
 /MANIFIESTO.md
 node_modules/
 /dist/
+/build/
+/LaboratorioMedidas.spec
