@@ -18,16 +18,17 @@ import math
 import os
 import re
 import secrets
+import socket
 import sqlite3
 import sys
 import threading
 import time
 import traceback
 import webbrowser
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer as BaseThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -53,6 +54,19 @@ MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
 VERSION = '2.0-v6-pruebas'
 SCHEMA_VERSION = 4
+
+
+class ThreadingHTTPServer(BaseThreadingHTTPServer):
+    """Reserva exclusiva en Windows; conserva la política estándar en Unix."""
+
+    def server_bind(self):
+        if sys.platform == 'win32':
+            # SO_REUSEADDR en Windows permite otro listener en el mismo puerto.
+            # La exclusividad se fija antes de bind y nunca se combina con reuse.
+            self.allow_reuse_address = False
+            self.allow_reuse_port = False
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def validate_public_origin(value):
@@ -176,14 +190,14 @@ def public_shared_account(username):
 def backup_before_migration():
     if not DB_PATH.exists() or not DB_PATH.stat().st_size:
         return
-    with sqlite3.connect(f'file:{DB_PATH.as_posix()}?mode=ro', uri=True) as source:
+    with closing(sqlite3.connect(f'file:{DB_PATH.as_posix()}?mode=ro', uri=True)) as source, source:
         version = source.execute('PRAGMA user_version').fetchone()[0]
         if version >= SCHEMA_VERSION:
             return
         target_dir = DATA_DIR / 'backups'
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / ('antes-v1-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.db')
-        with sqlite3.connect(target) as dest:
+        with closing(sqlite3.connect(target)) as dest, dest:
             source.backup(dest)
             if dest.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise RuntimeError('La copia de respaldo no pasó la comprobación de integridad.')
@@ -198,7 +212,7 @@ def create_backup():
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / ('respaldo-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.db')
     with database() as source:
-        with sqlite3.connect(target) as destination:
+        with closing(sqlite3.connect(target)) as destination, destination:
             source.backup(destination)
             if destination.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise RuntimeError('No se pudo verificar el respaldo.')
@@ -806,7 +820,8 @@ def main():
         try:
             server.server_bind()
         except OSError as error:
-            if error.errno in (errno.EADDRINUSE, 10048):
+            codes = {error.errno, getattr(error, 'winerror', None)}
+            if codes & {errno.EADDRINUSE, 10048, 10013}:
                 raise SystemExit(f'El puerto {PORT} ya está en uso. Cierra la otra consola de la aplicación y vuelve a abrir el iniciador.') from None
             if LAN_IP and error.errno in (errno.EADDRNOTAVAIL, 10049):
                 raise SystemExit(f'La IP {LAN_IP} no está asignada a esta PC. Comprueba ipconfig y la reserva de IP con TI.') from None
