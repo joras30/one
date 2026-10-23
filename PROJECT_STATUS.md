@@ -102,6 +102,9 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
   y todas las filas de usuarios, incluidos roles y verificadores de contraseña.
   Se comprobaron nuevas capturas, filtro Modelo, gráficos SVG/PNG, dos cierres,
   actas históricas PDF/JSON, recarga, integridad SQLite y ausencia de errores JS.
+- Actualización con caché HTTP real: **21 comprobaciones correctas**. Los doce
+  recursos antiguos permanecieron cacheados; al publicar y recargar, los nuevos
+  recursos cargaron con una huella común, conservando sesión y 61 eventos.
 - Regresiones V6: correcciones de entregas tras modificar el maestro, anulados
   en migración, conflicto de procesos históricos, saldos al corte, cálculos no
   finitos, formularios históricos ampliados y reemplazos SQL bloqueados.

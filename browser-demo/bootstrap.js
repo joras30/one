@@ -1,5 +1,7 @@
 const baseUrl=new URL('./',document.baseURI).href;
-const worker=new Worker(new URL('worker.js',baseUrl),{type:'module'});
+const buildVersion=new URL(import.meta.url).searchParams.get('v') || '';
+const versionedUrl=(name)=>{const url=new URL(name,baseUrl);if(buildVersion)url.searchParams.set('v',buildVersion);return url;};
+const worker=new Worker(versionedUrl('worker.js'),{type:'module'});
 const pending=new Map();let sequence=0;
 const loader=document.getElementById('demo-loader');
 const status=document.getElementById('demo-status');
@@ -58,5 +60,5 @@ const banner=document.getElementById('demo-banner');
 new ResizeObserver(()=>document.documentElement.style.setProperty('--demo-banner-height',banner.offsetHeight+'px')).observe(banner);
 try{
   await rpc({type:'init',baseUrl});loader.remove();
-  const script=document.createElement('script');script.src=new URL('app.js',baseUrl);document.body.append(script);
+  const script=document.createElement('script');script.src=versionedUrl('app.js');document.body.append(script);
 }catch(error){status.textContent=error.message;}

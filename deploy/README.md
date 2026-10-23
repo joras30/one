@@ -31,6 +31,10 @@ los cambios del jefe en su celular no aparecen automáticamente en tu PC.
 Los perfiles de esta demo no protegen información frente a quien controla el
 navegador. Utiliza únicamente datos ficticios.
 
+Cada construcción identifica sus recursos con una huella de versión. Al recargar,
+la interfaz, el trabajador y los módulos Python usan esa misma versión, mientras
+el nombre del almacenamiento permanece estable para conservar la prueba.
+
 ## Respaldar y trasladar la prueba
 
 Pulsa **Descargar respaldo** para guardar una copia completa de tu demo, incluidos

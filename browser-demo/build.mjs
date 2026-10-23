@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..'),out=path.join(root,'dist/github-pages');
@@ -15,8 +16,12 @@ await fs.cp(path.join(here,'node_modules/pyodide'),path.join(out,'runtime'),{rec
 await fs.copyFile(path.join(here,'node_modules/@noble/hashes/LICENSE'),path.join(out,'LICENSE-noble-hashes.txt'));
 await build({entryPoints:[path.join(here,'worker.js')],bundle:true,format:'esm',platform:'browser',target:'es2022',outfile:path.join(out,'worker.js')});
 await build({entryPoints:[path.join(here,'bootstrap.js')],bundle:true,format:'esm',platform:'browser',target:'es2022',outfile:path.join(out,'bootstrap.js')});
+const digest=createHash('sha256');
+for(const name of ['app.js','app.css','bootstrap.js','worker.js','demo.css',...['app.py','production.py','documents.py','operational.py','analytics.py','catalogos.json','bridge.py'].map(name=>'engine/'+name)])digest.update(name).update('\0').update(await fs.readFile(path.join(out,name)));
+digest.update(await fs.readFile(path.join(here,'package-lock.json')));
+const version=digest.digest('hex').slice(0,16);
 let html=await fs.readFile(path.join(root,'APLICACION_ACTUAL/static/index.html'),'utf8');
-html=html.replaceAll('href="/app.css"','href="./app.css"').replaceAll('src="/edesur.png"','src="./edesur.png"').replace('<script src="/app.js" defer></script>','<link rel="stylesheet" href="./demo.css"><script type="module" src="./bootstrap.js"></script>');
+html=html.replaceAll('href="/app.css"',`href="./app.css?v=${version}"`).replaceAll('src="/edesur.png"','src="./edesur.png"').replace('<script src="/app.js" defer></script>',`<link rel="stylesheet" href="./demo.css?v=${version}"><script type="module" src="./bootstrap.js?v=${version}"></script>`);
 html=html.replace('<body>',`<body><aside id="demo-banner" class="demo-banner"><p><strong>Demo gratuita de evaluación.</strong> Cada navegador conserva sus propios datos de prueba. Solo utiliza datos ficticios.</p><button id="demo-backup" type="button">Descargar respaldo</button><label>Restaurar respaldo<input id="demo-restore" type="file" accept="application/json,.json"></label><p id="demo-notification" role="status"></p></aside><section id="demo-loader" class="demo-loader" role="status"><h1>Laboratorio de Medidas</h1><p id="demo-status">Preparando la demostración…</p><p>La primera carga descarga el motor de la demo. Las siguientes versiones conservan tu prueba en este navegador. Usa los respaldos para trasladarla o protegerla.</p></section>`);
 await fs.writeFile(path.join(out,'index.html'),html);await fs.writeFile(path.join(out,'.nojekyll'),'');
 await fs.writeFile(path.join(out,'404.html'),html);
