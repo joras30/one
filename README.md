@@ -1,8 +1,30 @@
 # Laboratorio de Medidas — Control de Producción
 
-Aplicación web **local de pruebas**, adaptable a PC, tableta y celular. Amplía el
-prototipo Python/SQLite conservando sus usuarios, revisiones e identificadores.
+Aplicación web **2.0 de pruebas controladas**, con los requisitos del modelo V6,
+adaptable a PC, tableta y celular. Amplía el prototipo Python/SQLite conservando
+sus usuarios, revisiones e identificadores; el esquema de datos es **4**.
 No requiere paquetes adicionales para ejecutarse: Python **3.11 o superior**.
+
+La interfaz usa un tablero industrial oscuro con contadores, gráficos, tablas y
+semáforos acompañados de texto. Puede ejecutarse en una sola PC o servir una
+misma base a los navegadores de la red de oficina desde la PC principal.
+
+## Compartir la instalación en la oficina
+
+En la PC principal abre **`APLICACION_ACTUAL/iniciar_red.bat`** e introduce su IP
+privada asignada, por ejemplo `192.168.1.20`. La consola muestra el enlace para
+los otros equipos: **http://192.168.1.20:8765**. Utiliza tu IP real; el ejemplo no
+asigna una dirección a la PC. El celular debe conectarse a la misma red de oficina.
+
+Los clientes usan su navegador; Python y la base permanecen en la PC principal.
+Esta modalidad comparte los registros entre los equipos que usan ese servidor.
+La PC debe permanecer encendida. La guía de instalación, requisitos de red y
+actualización está en [deploy/RED_LOCAL.md](deploy/RED_LOCAL.md).
+
+El modo de red se activa explícitamente. `iniciar.bat` y `probar_demo.bat`
+mantienen su acceso exclusivo a `127.0.0.1`. No se modifica el firewall ni la IP
+del equipo. HTTP requiere una red privada de confianza; TI debe revisar el uso
+institucional y los certificados HTTPS cuando corresponda.
 
 ## Compartir una demo mediante enlace
 
@@ -15,7 +37,9 @@ La distribución ya está en esa rama. GitHub publica sus cambios en
 https://joras30.github.io/one/ después de activar Pages.
 Para entregar mejoras se actualiza la distribución en `gh-pages`; los visitantes
 solo recargan el enlace. El workflow **Construir demo gratuita** de `demo-web`
-construye y verifica un artefacto, sin publicar automáticamente.
+construye y verifica un artefacto. Detecta el modo de Pages: publica automáticamente
+si está configurado con GitHub Actions; en modo de rama sirve la distribución
+publicada en `gh-pages`.
 
 La demo ejecuta las funciones del laboratorio en el navegador y guarda su SQLite
 en IndexedDB. Mantiene los registros al recargar o actualizar el código en la misma
@@ -24,8 +48,9 @@ los registros automáticamente. Los botones de respaldo permiten descargar la pr
 completa y restaurarla en otro navegador. Borrar los datos del sitio elimina esa copia.
 
 Es una demo con personas ficticias; sus perfiles permiten evaluar las pantallas,
-no protegen una base laboral compartida. El uso de datos compartidos requiere
-conectar una base gratuita y permisos del lado servidor en una fase posterior.
+no protegen una base laboral compartida. Para compartir registros en la oficina
+se utiliza el servidor local descrito arriba. La sincronización por Internet de
+la demo Pages requeriría una base y permisos del lado servidor adicionales.
 
 La publicación usa una lista explícita de fuentes. Los documentos originales,
 empleados, bases locales y respaldos quedan fuera del repositorio de despliegue.
@@ -35,8 +60,9 @@ El perfil local y sus iniciadores siguen funcionando como se explica abajo.
 
 Haz clic derecho sobre el ZIP y elige **Extraer todo…**. Si usas WinRAR,
 elige **Extraer en…**. Abre la carpeta extraída y después
-`APLICACION_ACTUAL/probar_demo.bat`. `app.py`, `production.py`, `documents.py`
-y las carpetas `static` y `assets` deben estar juntos dentro de `APLICACION_ACTUAL`.
+`APLICACION_ACTUAL/probar_demo.bat`. `app.py`, `production.py`, `operational.py`,
+`analytics.py`, `documents.py`, `catalogos.json` y las carpetas `static` y `assets`
+deben estar juntos dentro de `APLICACION_ACTUAL`.
 El navegador abre una demostración con personas y producción ficticias:
 
 | Perfil de prueba | Usuario | Contraseña de demostración |
@@ -88,13 +114,21 @@ Una base anterior conserva sus accesos; no se sustituye por datos de ejemplo.
 - Seis actividades: limpieza o recuperación (una sola), revisión técnica,
   configuración, sellado, asignación y recepción.
 - Captura por lote o por serie, actividad fijada, responsable distinto de capturador.
-- SAP opcional en revisión; marca independiente del SAP. Único ejemplo SAP
-  precargado confirmado: `1003913`, `240V`, `Recuperado`.
+- SAP opcional en revisión; códigos, marcas, modelos, voltajes y clasificaciones
+  independientes. Un SAP admite varias configuraciones seleccionables. Único
+  ejemplo SAP precargado confirmado: `1003913`, `240V`, `Recuperado`.
+- Sellado unificado con serie, SAP, marca y modelo; la configuración SAP elegida
+  determina la clasificación de origen sin separar la actividad en dos.
 - Formularios configurables con versiones y consulta del histórico original.
 - Usuarios, actividades asignadas, cambio de clave y restablecimiento técnico al código.
 - Filtros, historial, confirmación de reingreso el mismo día, correcciones,
   anulaciones/restauración y auditoría.
-- Recepciones parciales, métricas por actividad/unidad y metas individuales.
+- Órdenes con proceso único y un SAP por proceso, entregas parciales, cantidades
+  recibidas y pendientes, vencimientos, cierre con acta y reapertura con motivo.
+- Calidad de revisión y calibración: resultados de reutilización, fallos, tasas
+  y desviaciones por técnico con filtros de fecha.
+- Comparativas A/B diarias, semanales, mensuales y anuales, con variación absoluta
+  y porcentual por actividad y unidad, además de métricas y metas individuales.
 - Importación supervisada de revisión/sellado, con validación previa y confirmación.
 - Tablas CSV/XLSX/PDF y gráficos SVG/PNG, respetando filtros y permisos.
 - Visitante limitado a estadísticas agregadas.
@@ -103,6 +137,48 @@ Las cantidades de distintas actividades representan operaciones: limpiar y sella
 el mismo equipo no crea dos medidores físicos diferentes. Los lotes sin series no
 permiten calcular equipos únicos. Recuperado describe un medidor retornado de un
 suministro, no una aprobación para reutilizarlo.
+
+## Catálogo SAP, recepción y control de calidad
+
+Un voltaje puede corresponder a varios códigos SAP y un código puede tener varias
+configuraciones. La marca y el modelo no son vínculos exclusivos del código.
+Si el SAP tiene configuraciones alternativas, selecciona la correspondiente al
+medidor; el sistema no debe inferir una clasificación ambigua. El registro conserva
+sus datos aunque después se actualice el catálogo.
+
+En **Recepciones**, crea la orden indicando proceso único, número de orden, SAP,
+cantidad esperada y, si corresponde, fecha de seguimiento. Cada entrega se registra
+en la actividad Recepción con el mismo proceso, orden y SAP. Para otro SAP utiliza
+otro proceso. El panel acumula las entregas válidas y muestra pendientes o excesos;
+un saldo completo no cierra automáticamente la orden. La supervisión realiza el
+cierre cuando la cantidad recibida coincide con la esperada y descarga el acta.
+El acta conserva una instantánea y su huella SHA-256. Para cambiar entregas de una
+orden cerrada primero debe reabrirse con un motivo registrado en la auditoría.
+
+En **Revisión técnica**, SAP sigue siendo opcional. Los datos de inspección y
+calibración también son opcionales; al informar mediciones se requiere referencia
+distinta de cero, valor medido y tolerancia en porcentaje. La desviación es
+`(medido - referencia) / abs(referencia) × 100`; la alerta compara su valor absoluto
+con la tolerancia. Las tasas de aprobación y rechazo usan como denominador las
+revisiones evaluadas (**Apto + No apto**); los pendientes y resultados ausentes se
+muestran separados. Cada técnico consulta su propio alcance y el visitante solo
+estadísticas agregadas.
+
+## Comparar períodos y descargar informes
+
+En **Comparativas**, selecciona los rangos inclusivos de A y B, la granularidad y
+los filtros. Se muestran los totales de ambos rangos por actividad y unidad;
+los registros y las cantidades son métricas diferentes. La variación absoluta
+es **B − A**, y el crecimiento es **(B − A) / A × 100**. Si A es cero y B es mayor
+que cero se muestra **Sin base**, sin inventar un porcentaje; si ambos son cero,
+la variación es cero. Las semanas siguen el calendario ISO, de lunes a domingo.
+
+Los reportes de calidad y comparativas pueden descargarse directamente en Excel
+o PDF con los filtros y períodos utilizados. Las tablas y gráficos existentes
+siguen disponibles en sus respectivos formatos. El historial de auditoría añade
+las correcciones, anulaciones y reaperturas sin sobrescribir entradas: SQLite
+bloquea la edición y eliminación de esas entradas y se puede verificar su cadena
+de integridad SHA-256.
 
 ## Persistencia y actualizaciones
 
@@ -113,6 +189,14 @@ Antes de la primera migración se crea una copia SQLite consistente y verificada
 en `backups/` dentro de la carpeta de datos. No se cambian contraseñas existentes.
 La cuenta supervisora original conserva su autoridad administrativa mediante
 el nuevo perfil Administrador; su identificador, contraseña y rol legado se mantienen.
+
+Para actualizar a la versión 2.0, genera un respaldo desde Administración y
+conserva una copia en otro destino autorizado. Cierra la consola de la aplicación
+antes de sustituir el código. Conserva intactas las carpetas `datos_locales`,
+`datos_demo` y sus respaldos; no las reemplaces por una carpeta vacía del paquete.
+Vuelve a abrir el mismo iniciador y la misma carpeta de datos. La migración al
+esquema 4 conserva el histórico y las versiones anteriores de los formularios.
+Los equipos clientes de la oficina solo recargan el mismo enlace.
 
 Administración puede generar más respaldos desde la aplicación. Se requiere una
 política de copias en otro destino autorizado para protegerse de pérdida del disco.
@@ -155,12 +239,16 @@ El detalle de resultados y límites de validación está en `PROJECT_STATUS.md`.
 
 ## Alcance de la versión de prueba
 
-Los iniciadores locales escuchan exclusivamente en `127.0.0.1`. La publicación
+Los iniciadores `iniciar.bat` y `probar_demo.bat` escuchan en `127.0.0.1`.
+`iniciar_red.bat` utiliza exclusivamente la IPv4 privada que se indica; SQLite
+permanece en el disco local de la PC principal. La publicación
 gratuita se construye con `browser-demo/`; `.github/workflows/pages.yml` verifica
-el artefacto y Pages sirve la distribución de `gh-pages`. El perfil alternativo
+el artefacto y lo publica según el modo de Pages configurado. El perfil alternativo
 `web_demo.py` sigue disponible para un servidor propio, sin contratar alojamiento.
 El uso operativo con empleados o datos reales requiere despliegue revisado por TI.
 No se ha modificado firewall ni importado nombres de empleados para estas pruebas.
+Las comprobaciones realizadas aquí usan datos ficticios y loopback; no equivalen
+a una prueba física de la red de la oficina o de los iniciadores en Windows.
 
 `REFERENCIAS/` y la documentación original contienen material del paquete aportado
 por el usuario; no se suben a servicios públicos ni se usan como datos de prueba.

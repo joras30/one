@@ -11,6 +11,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    outputs:
+      pages_mode: ${{ steps.pages.outputs.mode }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,3 +41,30 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/github-pages
+          retention-days: 1
+      - name: Consultar el modo de publicación configurado
+        id: pages
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const result = await github.rest.repos.getPages({owner: context.repo.owner, repo: context.repo.repo});
+            const mode = result.data.build_type;
+            if (!['legacy', 'workflow'].includes(mode)) throw new Error('Modo de GitHub Pages no reconocido.');
+            core.setOutput('mode', mode);
+            core.info(mode === 'workflow' ? 'Pages publica mediante Actions.' : 'Pages publica la distribución de su rama configurada.');
+  deploy:
+    if: needs.build.outputs.pages_mode == 'workflow'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

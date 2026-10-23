@@ -1,12 +1,13 @@
 LABORATORIO DE MEDIDAS — CONTROL DE PRODUCCIÓN
-VERSIÓN 1.0 DE PRUEBAS LOCALES
+VERSIÓN 2.0 DE PRUEBAS CONTROLADAS — MODELO V6 — ESQUEMA 4
 
 PRUEBA RÁPIDA EN WINDOWS
 1. Instala Python 3.11 o superior si el equipo no dispone de él.
 2. Clic derecho sobre el ZIP: Extraer todo...; en WinRAR: Extraer en...
    Elige una carpeta local autorizada y abre la carpeta extraída.
 3. Entra en APLICACION_ACTUAL y abre probar_demo.bat. Debe estar junto a
-   app.py, production.py, documents.py y las carpetas static y assets.
+   app.py, production.py, operational.py, analytics.py, documents.py,
+   catalogos.json y las carpetas static y assets.
    Se abrirá el navegador con datos completamente ficticios.
    La pantalla debe decir Demostración con datos ficticios. Puedes pulsar
    Usar acceso de supervisión o Usar acceso de colaborador para completar
@@ -60,9 +61,52 @@ actuales; las contraseñas se guardan como verificadores de hash.
 ACTIVIDADES
 Limpieza o recuperación es una sola actividad. Revisión técnica admite SAP
 opcional y conserva las series como texto. Sellado también identifica cada serie.
-Configuración, limpieza y asignación pueden registrar lotes. Recepción acumula
-entregas y pendientes por orden/SAP. Los formularios pueden versionarse sin
-alterar la interpretación del histórico.
+Configuración, limpieza y asignación pueden registrar lotes. Los formularios
+pueden versionarse sin alterar la interpretación del histórico. El tablero
+industrial oscuro utiliza contadores, gráficos, tablas y semáforos con texto.
+
+CATÁLOGO SAP Y SELLADO
+Un SAP puede tener varias configuraciones con distintos voltajes, clasificaciones,
+marcas y modelos; un voltaje puede aparecer en varios SAP. No hay exclusividad
+entre marca y código. Si hay alternativas, elige la configuración que corresponde
+al medidor. En sellado esa configuración determina automáticamente si el origen
+es Nuevo o Recuperado: sigue siendo una sola actividad. Lo registrado mantiene
+sus datos aunque el catálogo se modifique después. Recuperado indica origen,
+no aprobación para reutilizar el medidor. SAP sigue siendo opcional en revisión.
+
+RECEPCIONES PARCIALES Y ACTA
+En Recepciones crea una orden con proceso único, número de orden, SAP y cantidad
+esperada. Puedes indicar fecha de seguimiento. Cada entrega usa el mismo proceso,
+orden y SAP; otro SAP requiere otro proceso. El panel acumula entregas válidas,
+pendientes y excesos, y muestra alertas de seguimiento.
+La supervisión puede cerrar el lote cuando recibido y esperado coinciden y
+descargar el acta con su huella de integridad SHA-256. Una orden cerrada conserva
+sus entregas: para corregirlas hay que reabrirla con un motivo registrado.
+
+REVISIÓN Y CALIDAD
+En Revisión técnica puedes informar inspección o calibración, fallo y mediciones.
+Si informas una medición, completa referencia, valor medido y tolerancia. Usa la
+misma unidad para referencia y valor medido. La desviación porcentual es
+(medido - referencia) / abs(referencia) x 100; la referencia no puede ser cero.
+La tolerancia porcentual permite destacar mediciones fuera de rango.
+El panel Calidad distingue Apto, No apto, Pendiente y Sin resultado. Las tasas de
+aprobación y rechazo se calculan sobre Apto + No apto; los pendientes se muestran
+aparte. La supervisión puede comparar el detalle por técnico. Cada colaborador
+consulta su propio alcance; el visitante solo ve agregados.
+
+COMPARATIVAS A VS. B
+Elige los rangos de fecha inclusivos de A y B y una granularidad diaria, semanal,
+mensual o anual. Aplica los filtros de actividad, colaborador, SAP o voltaje.
+Las cantidades se comparan por actividad y unidad; no se suman medidores,
+revisiones y otras unidades como si fueran equivalentes. La variación absoluta
+es B - A y el porcentaje es (B - A) / A x 100. Cuando A es cero y B es mayor,
+aparece Sin base en lugar de un porcentaje inventado; ambos en cero dan 0.
+Calidad y Comparativas ofrecen descarga directa Excel y PDF con su contexto.
+
+AUDITORÍA
+Cada corrección, anulación y reapertura conserva su motivo, fecha y responsable.
+Las entradas de auditoría se añaden sin sobrescribir las anteriores; SQLite
+bloquea su edición y eliminación. Desde Auditoría se verifica su cadena SHA-256.
 
 ARCHIVOS
 Se pueden descargar tablas CSV/XLSX/PDF y gráficos SVG/PNG. Las importaciones
@@ -70,11 +114,46 @@ CSV/XLSX de revisión y sellado se revisan antes de confirmar y se atribuyen por
 código de empleado. Los archivos admiten límites explícitos; no se recortan
 resultados silenciosamente. Conserva series y códigos como texto en Excel.
 
-MÓVIL Y ALCANCE DE ESTA ENTREGA
-La interfaz se adapta a celular/tableta y PC. Esta prueba escucha solo en la
-misma computadora (127.0.0.1). El acceso desde otros equipos o desde un celular
-requiere un despliegue autorizado; no cambies la dirección ni el firewall.
-No utilices datos reales ni una base sobre unidades compartidas para esta prueba.
+MÓVIL Y RED DE OFICINA
+La interfaz se adapta a celular/tableta y PC. iniciar.bat y probar_demo.bat
+escuchan exclusivamente en la misma computadora (127.0.0.1).
+Para compartir una base desde la PC principal, abre iniciar_red.bat y escribe
+su IPv4 privada real, visible con ipconfig, por ejemplo 192.168.1.20.
+La consola muestra el enlace http://TU_IP:8765. Los otros equipos abren ese enlace
+y el celular se conecta a la misma Wi-Fi de oficina. La PC principal y su consola
+deben permanecer encendidas. Los clientes no necesitan instalar Python.
+También puedes ejecutar: py app.py --lan-ip 192.168.1.20
+Para una prueba LAN separada: py app.py --demo --lan-ip 192.168.1.20
+La demo LAN usa el puerto 8766 y datos ficticios en datos_demo.
+La IP del ejemplo debe sustituirse por la de tu PC. Solicita a TI una reserva DHCP
+o utiliza la IP fija ya asignada. El programa no cambia la IP ni el firewall.
+HTTP requiere una red privada de confianza; coordina la autorización de red y
+HTTPS institucional con TI. La guía completa está en ../deploy/RED_LOCAL.md.
+La base permanece en el disco local de la PC principal, nunca en F:, H:, I:, W:
+ni en rutas de red. Solo el servidor abre SQLite; los clientes usan su navegador.
+Las pruebas de este entorno usan datos ficticios y loopback: no se ha probado
+la red física de la oficina ni ejecutado estos iniciadores en Windows.
+
+DEMO GRATUITA POR ENLACE
+La versión GitHub Pages permite evaluar la interfaz sin instalar Python.
+Cada navegador guarda sus propios datos; sus cambios no se sincronizan entre PC
+y celular. Descargar respaldo y Restaurar respaldo permiten conservar y trasladar
+esa prueba. Utiliza personas ficticias. Tanto esta demo como el servidor local
+se mantienen a costo cero, sin contratar alojamiento ni planes de pago.
+
+ACTUALIZAR SIN PERDER LO REGISTRADO
+1. Genera un respaldo desde Administración y conserva una copia en otro destino
+   autorizado. Anota qué carpeta de datos y qué iniciador utilizas.
+2. Cierra todas las consolas de la aplicación antes de actualizar el código.
+3. Conserva intactas las carpetas datos_locales, datos_demo y backups; no las
+   reemplaces ni borres al extraer una versión nueva.
+4. Sustituye los archivos del programa y vuelve a abrir el mismo iniciador y
+   la misma carpeta de datos. La migración al esquema 4 conserva el histórico,
+   usuarios, claves y versiones anteriores de los formularios.
+5. Verifica los registros y fechas. En la oficina los clientes solo recargan
+   el enlace del servidor actualizado; no descargan la aplicación de nuevo.
+La demo Pages también conserva la prueba al actualizar en la misma dirección,
+pero borrar los datos del navegador elimina esa copia: descarga un respaldo.
 
 RESPALDOS
 Administración puede generar una copia consistente desde la aplicación. Las

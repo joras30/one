@@ -19,6 +19,8 @@ import sqlite3
 import unicodedata
 import uuid
 
+import operational
+
 
 MANAGERS = {"supervisor", "administrador"}
 FIELD_TYPES = {"text", "number", "select", "date", "checkbox"}
@@ -254,16 +256,12 @@ def init_schema(db):
             for person in people:
                 assign_user(db, person["id"], activity_ids)
             db.execute("INSERT INTO production_meta VALUES('legacy_assignments_migrated',?)", (now(),))
+    operational.init_schema(db)
 
 
 def audit(db, actor, entity, entity_id, action, before=None, after=None, reason=""):
     """El llamador controla la transacción; nunca incluir credenciales."""
-    actor_id = actor.get("id") if isinstance(actor, dict) else actor
-    db.execute("""INSERT INTO audit_entries(actor_id,entity,entity_id,action,before_json,after_json,reason,created_at)
-                  VALUES(?,?,?,?,?,?,?,?)""",
-               (actor_id, str(entity), str(entity_id), str(action),
-                _json(before) if before is not None else None, _json(after) if after is not None else None,
-                str(reason or "")[:1500], now()))
+    operational.audit(db, actor, entity, entity_id, action, before, after, reason)
 
 
 def assign_user(db, user_id, activity_ids):
@@ -286,6 +284,11 @@ def _expanded_fields(db, fields):
         field = dict(original)
         if field.get("source") in {"voltajes", "condiciones", "marcas"}:
             field["options"] = [r[0] for r in db.execute("SELECT label FROM catalog WHERE kind=? AND active=1 ORDER BY label", (field["source"],))]
+        if field["key"] == "clasificacion" and field["type"] == "select":
+            # Las clasificaciones del maestro están abiertas; no son un enum SAP.
+            has_configs = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sap_configurations'").fetchone()
+            if has_configs:
+                field["options"] = list(dict.fromkeys([*field.get("options", []), *[r[0] for r in db.execute("SELECT DISTINCT classification FROM sap_configurations WHERE active=1 AND classification!='' ORDER BY classification")]]))
         result.append(field)
     return result
 
@@ -320,8 +323,8 @@ def _activities(db, user):
 
 
 def _validate_fields(fields, mode):
-    if not isinstance(fields, list) or not 0 <= len(fields) <= 40:
-        raise ApiError("La actividad admite hasta 40 campos.")
+    if not isinstance(fields, list) or not 0 <= len(fields) <= 64:
+        raise ApiError("La actividad admite hasta 64 campos.")
     clean, keys = [], set()
     for original in fields:
         if not isinstance(original, dict):
@@ -402,23 +405,7 @@ def _save_activity(db, user, data):
 
 
 def _save_sap(db, user, data):
-    _manager(user)
-    code = _text(data.get("code"), "Código SAP", 60, True)
-    voltage = _text(data.get("voltage"), "Voltaje", 100, True)
-    classification = _text(data.get("classification"), "Clasificación", 50, True)
-    options = {"nuevo": "Nuevo", "recuperado": "Recuperado"}
-    if _fold(classification) not in options:
-        raise ApiError("La clasificación debe ser Nuevo o Recuperado.")
-    classification = options[_fold(classification)]
-    active = bool(data.get("active", True))
-    with _transaction(db):
-        before = db.execute("SELECT * FROM sap_catalog WHERE code=?", (code,)).fetchone()
-        db.execute("""INSERT INTO sap_catalog(code,voltage,classification,active,updated_at) VALUES(?,?,?,?,?)
-                      ON CONFLICT(code) DO UPDATE SET voltage=excluded.voltage,classification=excluded.classification,
-                      active=excluded.active,updated_at=excluded.updated_at""", (code, voltage, classification, int(active), now()))
-        audit(db, user, "sap", code, "actualizar" if before else "crear", dict(before) if before else None,
-              {"code": code, "voltage": voltage, "classification": classification, "active": active})
-    return {"ok": True}
+    return operational.save_sap(db, user, data)
 
 
 def _responsible(db, user, payload, activity_id, existing=None):
@@ -442,28 +429,15 @@ def _responsible(db, user, payload, activity_id, existing=None):
 
 
 def _clean_data(db, activity, raw, existing=None):
-    if not isinstance(raw, dict) or len(raw) > 50:
+    if not isinstance(raw, dict) or len(raw) > 80:
         raise ApiError("Los datos de actividad deben ser un objeto válido.")
     fields = activity["fields"]
     known = {field["key"] for field in fields}
-    unknown = set(raw) - known
+    unknown = set(raw) - known - {"desviacion_pct", "fuera_tolerancia"}
     if unknown:
         raise ApiError("Hay campos que no pertenecen a esta versión de actividad: " + ", ".join(sorted(unknown)[:5]))
-    raw = dict(raw)
+    raw = operational.prepare_sap(db, activity, raw, existing)
     old_data = existing["data"] if existing else {}
-    check_sap = not existing or any(raw.get(k, "") != old_data.get(k, "") for k in ("sap", "voltaje", "clasificacion"))
-    sap_code = _text(raw.get("sap", ""), "Código SAP", 60)
-    sap = db.execute("SELECT * FROM sap_catalog WHERE code=?", (sap_code,)).fetchone() if sap_code else None
-    if sap and check_sap:
-        if not sap["active"]:
-            raise ApiError("Ese SAP está desactivado para nuevas capturas.")
-        for key, source in (("voltaje", "voltage"), ("clasificacion", "classification")):
-            if key not in known:
-                continue
-            if raw.get(key) in (None, ""):
-                raw[key] = sap[source]
-            elif sap[source] and _fold(raw[key]) != _fold(sap[source]):
-                raise ApiError(f"El SAP {sap_code} corresponde a {sap['voltage']} / {sap['classification']}; revisa {key}.")
     clean = {}
     for field in fields:
         key, kind = field["key"], field["type"]
@@ -513,7 +487,7 @@ def _clean_data(db, activity, raw, existing=None):
             if field.get("integer") and number != number.to_integral_value():
                 raise ApiError(f"{field['label']}: introduce un entero.")
             clean[key] = int(number) if number == number.to_integral_value() else float(number)
-    return clean
+    return operational.derive_quality(activity, clean)
 
 
 EVENT_SELECT = """SELECT e.*, v.name AS activity_name,v.mode AS event_mode,
@@ -637,6 +611,7 @@ def _save_event(db, user, payload, import_id=None):
                          normalized["responsible_id"], user["id"], normalized["quantity"], normalized["unit"],
                          _json(normalized["data"]), revision, operation_id, identity, import_id, timestamp, timestamp))
     event = _event(db, cursor.lastrowid)
+    operational.attach_receipt(db, user, event)
     audit(db, user, "registro", event["id"], "importar" if import_id else "crear", after=event)
     return {"ok": True, "record": event}
 
@@ -646,6 +621,7 @@ def _correct_event(db, user, event_id, payload):
     with _transaction(db):
         existing = _event(db, event_id)
         _event_permission(user, existing)
+        operational.assert_receipt_open(db, existing)
         if existing["state"] != "valido":
             raise ApiError("Restaura el registro anulado antes de corregirlo.", 409)
         # Conserva actividad, versión y responsable originales.
@@ -661,6 +637,7 @@ def _correct_event(db, user, event_id, payload):
         db.execute("UPDATE production_events SET work_date=?,quantity=?,unit=?,data_json=?,updated_at=? WHERE id=?",
                    (normalized["work_date"], normalized["quantity"], normalized["unit"], _json(normalized["data"]), now(), event_id))
         result = _event(db, event_id)
+        operational.attach_receipt(db, user, result, existing=existing)
         audit(db, user, "registro", event_id, "corregir", existing, result, reason)
     return {"ok": True, "record": result}
 
@@ -670,6 +647,7 @@ def _state_event(db, user, event_id, payload, restore=False):
     with _transaction(db):
         existing = _event(db, event_id)
         _event_permission(user, existing)
+        operational.assert_receipt_open(db, existing)
         if restore:
             _manager(user)
         state = "valido" if restore else "anulado"
@@ -708,7 +686,7 @@ def _filters(user, query, allow_visitor=False):
     if query.get("activity_id"):
         clauses.append("e.activity_id=?")
         values.append(_text(query["activity_id"], "Actividad", 80))
-    for param, field in (("sap", "sap"), ("voltage", "voltaje"), ("condition", "condicion"), ("brand", "marca")):
+    for param, field in (("sap", "sap"), ("voltage", "voltaje"), ("condition", "condicion"), ("brand", "marca"), ("model", "modelo")):
         if query.get(param):
             clauses.append(f"json_extract(e.data_json,'$.{field}')=?")
             values.append(_text(query[param], param, 150))
@@ -755,47 +733,9 @@ def _history(db, user, query):
 
 
 def _receipts(db, user, query=None, allow_visitor=False):
-    if user["role"] == "visitante" and not allow_visitor:
-        raise ApiError("La cuenta visitante no consulta órdenes individuales.", 403)
-    q = dict(query or {})
-    q.pop("desde", None)  # Saldo acumulado al corte, no solo entregas del período.
-    q["activity_id"] = "recepcion"
-    q["state"] = "valido"
-    rows = _events(db, user, q, allow_visitor=allow_visitor)
-    own_quantities = Counter()
-    if user["role"] == "tecnico" or q.get("responsible_id"):
-        # Una orden compartida no puede aparentar saldo pendiente por ocultar las
-        # entregas de otro técnico, tampoco al filtrar el panel del supervisor.
-        # Solo se revelan agregados de las órdenes incluidas en el alcance.
-        for event in rows:
-            own_quantities[(event["data"].get("numero_orden", ""), event["data"].get("sap", ""))] += event["quantity"]
-        aggregate_query = dict(q)
-        aggregate_query.pop("responsible_id", None)
-        aggregate_rows = _events(db, {**user, "role": "supervisor"}, aggregate_query)
-        rows = [event for event in aggregate_rows
-                if (event["data"].get("numero_orden", ""), event["data"].get("sap", "")) in own_quantities]
-    groups = {}
-    for event in reversed(rows):
-        data = event["data"]
-        key = (data.get("numero_orden", ""), data.get("sap", ""))
-        group = groups.setdefault(key, {"order": key[0], "sap": key[1], "process": data.get("proceso", ""),
-                                        "received": 0, "expected": None, "deliveries": 0, "last_date": event["work_date"]})
-        group["received"] += event["quantity"]
-        group["deliveries"] += 1
-        group["last_date"] = event["work_date"]
-        if data.get("cantidad_esperada") not in (None, ""):
-            group["expected"] = data["cantidad_esperada"]
-    result = []
-    for group in groups.values():
-        expected = group["expected"]
-        group["pending"] = max(0, expected - group["received"]) if expected is not None else None
-        group["excess"] = max(0, group["received"] - expected) if expected is not None else 0
-        group["state"] = "por_confirmar" if expected is None else "pendiente" if group["pending"] else "completa"
-        group["scope"] = "orden"
-        if user["role"] == "tecnico":
-            group["own_received"] = own_quantities[(group["order"], group["sap"])]
-        result.append(group)
-    return sorted(result, key=lambda x: (x["last_date"], x["order"]), reverse=True)
+    # El maestro conserva cantidades y órdenes todavía sin entregas. El balance
+    # global no se reduce al aporte personal ni a las entregas del período.
+    return operational.receipts(db, user, query, allow_visitor=allow_visitor)
 
 
 def _goals(db, user, query=None, allow_visitor=False):
@@ -1032,6 +972,9 @@ def export_rows(db, user, query):
             used_labels.add(label)
             extra_columns[identity] = label
     headers.extend(extra_columns.values())
+    quality_columns = any("desviacion_pct" in event["data"] for event in rows)
+    if quality_columns:
+        headers.extend(["Desviación calculada (%)", "Fuera de tolerancia"])
     values = []
     for event in reversed(rows):
         data = event["data"]
@@ -1048,12 +991,14 @@ def export_rows(db, user, query):
             if isinstance(value, bool):
                 value = "Sí" if value else "No"
             value_row.append(value)
+        if quality_columns:
+            value_row.extend([data.get("desviacion_pct", ""), "Sí" if data.get("fuera_tolerancia") is True else "No" if data.get("fuera_tolerancia") is False else ""])
         values.append(value_row)
     context = []
     if query.get("desde") or query.get("hasta"):
         context.append(f"Período: {query.get('desde') or 'inicio'} a {query.get('hasta') or 'actualidad'}")
     for key, label in (("activity_id", "Actividad"), ("responsible_id", "Responsable"), ("sap", "SAP"),
-                       ("voltage", "Voltaje"), ("condition", "Condición"), ("meter", "Serie"), ("state", "Estado")):
+                       ("voltage", "Voltaje"), ("condition", "Condición"), ("brand", "Marca"), ("model", "Modelo"), ("meter", "Serie"), ("state", "Estado")):
         if query.get(key):
             context.append(f"{label}: {_text(query[key], label, 150)}")
     context.append(f"Generado: {now()}")
@@ -1076,7 +1021,7 @@ def handle_get(db, user, path, query):
     if path == "/api/actividades":
         return _activities(db, user)
     if path == "/api/sap":
-        return {"items": [{**dict(row), "active": bool(row["active"])} for row in db.execute("SELECT code,voltage,classification,active FROM sap_catalog ORDER BY code")]}
+        return operational.sap_items(db)
     if path in {"/api/eventos", "/api/registros"}:
         return _list_events(db, user, query)
     if path == "/api/historial":
@@ -1089,7 +1034,7 @@ def handle_get(db, user, path, query):
         return {"goals": _goals(db, user, query)}
     if path == "/api/auditoria":
         return _audit_entries(db, user, query)
-    return None
+    return operational.handle_get(db, user, path, query)
 
 
 def handle_post(db, user, path, data):
@@ -1114,4 +1059,4 @@ def handle_post(db, user, path, data):
         if match.group(2) == "corregir":
             return _correct_event(db, user, event_id, data)
         return _state_event(db, user, event_id, data, restore=match.group(2) == "restaurar")
-    return None
+    return operational.handle_post(db, user, path, data)

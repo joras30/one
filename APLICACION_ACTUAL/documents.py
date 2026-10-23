@@ -71,8 +71,8 @@ def normalize_header(value: str) -> str:
         "codigo_medidor": "serie", "codigo_de_medidor": "serie",
         "medidor": "serie", "meter": "serie", "serial": "serie",
         "codigo_sap": "sap", "cod_sap": "sap", "material_sap": "sap",
-        "marca_modelo": "marca", "marca_y_modelo": "marca", "modelo": "marca",
-        "brand": "marca", "brand_model": "marca",
+        "marca_modelo": "marca", "marca_y_modelo": "marca",
+        "brand": "marca", "brand_model": "marca", "model": "modelo",
         "tension": "voltaje", "nivel_tension": "voltaje",
         "nivel_de_tension": "voltaje", "voltage": "voltaje",
         "condicion_tecnica": "condicion", "condicion_encontrada": "condicion",
@@ -80,6 +80,11 @@ def normalize_header(value: str) -> str:
         "tipo_medidor": "clasificacion", "nuevo_recuperado": "clasificacion",
         "origen": "clasificacion", "procedencia": "clasificacion",
         "resultado_revision": "resultado", "resultado_de_revision": "resultado",
+        "configuracion_sap": "sap_config_id", "id_configuracion_sap": "sap_config_id",
+        "tipo_de_inspeccion": "tipo_inspeccion", "falla": "fallo",
+        "valor_de_referencia": "valor_referencia", "referencia": "valor_referencia",
+        "valor_de_medicion": "valor_medido", "medicion": "valor_medido",
+        "tolerancia_porcentual": "tolerancia_pct", "tolerancia": "tolerancia_pct",
         "observacion": "observaciones", "notas": "observaciones", "notes": "observaciones",
         "quantity": "quantity", "cantidad": "quantity",
     }
@@ -460,11 +465,50 @@ def read_table(filename: str, content: bytes) -> list[dict[str, str]]:
 
 def template_columns(activity_id: str) -> list[str]:
     if activity_id == "revision":
-        return ["work_date", "responsible", "serie", "marca", "voltaje", "sap", "condicion",
-                "clasificacion", "resultado", "observaciones"]
+        return ["work_date", "responsible", "serie", "marca", "modelo", "voltaje", "sap", "sap_config_id", "condicion",
+                "clasificacion", "resultado", "tipo_inspeccion", "fallo", "valor_referencia", "valor_medido",
+                "tolerancia_pct", "observaciones"]
     if activity_id == "sellado":
-        return ["work_date", "responsible", "serie", "sap", "marca", "voltaje", "clasificacion", "observaciones"]
+        return ["work_date", "responsible", "serie", "sap", "sap_config_id", "marca", "modelo", "voltaje", "clasificacion", "observaciones"]
     raise ValueError("Las plantillas de importación están disponibles para revisión técnica y sellado.")
+
+
+def certificate_table(certificate: dict) -> tuple[list[str], list[list], str]:
+    """Representar íntegra el acta persistida; no recalcular sus entregas al exportar."""
+    if not isinstance(certificate, dict) or not isinstance(certificate.get("snapshot"), dict):
+        raise ValueError("El acta no contiene un cierre verificable.")
+    number = _plain(certificate.get("number") or certificate.get("id") or "")
+    if not number or len(number) > 150:
+        raise ValueError("El folio del acta no es válido.")
+    rows = [["Folio", number], ["Fecha de emisión (UTC)", certificate.get("created_at", "")],
+            ["SHA-256 del contenido certificado", certificate.get("hash", "")],
+            ["Alcance", "Acta de cierre aprobada en el sistema. La huella verifica su contenido; no es una firma digital institucional."]]
+    if "current" in certificate:
+        rows.insert(1, ["Vigencia", "Cierre vigente" if certificate["current"] else "Acta histórica; no representa el cierre vigente de la orden"])
+    labels = {"process": "Proceso", "order_number": "Número de orden", "sap": "Código SAP",
+              "expected": "Total esperado", "received": "Total recibido", "pending": "Pendiente",
+              "excess": "Excedente", "deliveries": "Entregas", "work_date": "Fecha de trabajo",
+              "responsible_name": "Responsable técnico", "recorded_by_name": "Registrado por",
+              "quantity": "Cantidad", "closed_by": "Cerrado por", "closed_at": "Fecha de cierre",
+              "reason": "Motivo", "order": "Orden", "notes": "Observaciones", "state": "Estado"}
+
+    def flatten(value, path):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                flatten(item, path + [labels.get(str(key), str(key))])
+        elif isinstance(value, list):
+            if not value:
+                rows.append([" / ".join(path), "Sin elementos"])
+            for index, item in enumerate(value, 1):
+                flatten(item, path + [str(index)])
+        else:
+            detail = "Sí" if value is True else "No" if value is False else value
+            rows.append([" / ".join(path), detail])
+        if len(rows) > MAX_ROWS:
+            raise ValueError("El acta supera el límite del reporte PDF; conserva su descarga JSON completa.")
+
+    flatten(certificate["snapshot"], ["Contenido certificado"])
+    return ["Campo certificado", "Valor"], rows, "Acta de cierre de lote — " + number
 
 
 def _pdf_escape(text: str) -> bytes:

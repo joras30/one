@@ -16,6 +16,8 @@ APLICACION_ACTUAL/app.py
 APLICACION_ACTUAL/web_demo.py
 APLICACION_ACTUAL/production.py
 APLICACION_ACTUAL/documents.py
+APLICACION_ACTUAL/operational.py
+APLICACION_ACTUAL/analytics.py
 APLICACION_ACTUAL/catalogos.json
 APLICACION_ACTUAL/static/index.html
 APLICACION_ACTUAL/static/app.js
@@ -23,11 +25,18 @@ APLICACION_ACTUAL/static/app.css
 APLICACION_ACTUAL/assets/edesur.png
 APLICACION_ACTUAL/iniciar.bat
 APLICACION_ACTUAL/probar_demo.bat
+APLICACION_ACTUAL/iniciar_red.bat
 APLICACION_ACTUAL/LEEME_PRIMERO.txt
 APLICACION_ACTUAL/tests/test_application.py
 APLICACION_ACTUAL/tests/test_web_demo.py
+APLICACION_ACTUAL/tests/test_lan_v6.py
+APLICACION_ACTUAL/tests/test_v6_http.py
 tests/test_documents.py
+tests/test_documents_v6.py
+tests/test_analytics_v6.py
+tests/test_v6_domain.py
 deploy/README.md
+deploy/RED_LOCAL.md
 deploy/ARCHIVOS_PUBLICABLES.txt
 
 # Excluir REFERENCIAS/, DOCUMENTACION/, INSTRUCCION_INICIAL_PARA_CODEX.md,

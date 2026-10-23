@@ -5,7 +5,7 @@ import {build} from 'esbuild';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..'),out=path.join(root,'dist/github-pages');
 await fs.rm(out,{recursive:true,force:true});await fs.mkdir(path.join(out,'engine'),{recursive:true});
-for(const name of ['app.py','production.py','documents.py','catalogos.json'])await fs.copyFile(path.join(root,'APLICACION_ACTUAL',name),path.join(out,'engine',name));
+for(const name of ['app.py','production.py','documents.py','operational.py','analytics.py','catalogos.json'])await fs.copyFile(path.join(root,'APLICACION_ACTUAL',name),path.join(out,'engine',name));
 await fs.copyFile(path.join(here,'bridge.py'),path.join(out,'engine/bridge.py'));
 for(const name of ['app.js','app.css'])await fs.copyFile(path.join(root,'APLICACION_ACTUAL/static',name),path.join(out,name));
 await fs.copyFile(path.join(root,'APLICACION_ACTUAL/assets/edesur.png'),path.join(out,'edesur.png'));

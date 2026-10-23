@@ -12,6 +12,7 @@ import binascii
 import errno
 import hashlib
 import hmac
+import ipaddress
 import json
 import math
 import os
@@ -32,6 +33,7 @@ from urllib.parse import parse_qs, urlparse
 
 import documents
 import production
+import analytics
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / 'datos_locales'
@@ -40,6 +42,7 @@ HOST, PORT = '127.0.0.1', 8765
 DEFAULT_NORMAL_PORT, DEFAULT_DEMO_PORT = 8765, 8766
 DEMO_MODE = False
 PUBLIC_ORIGIN = ''
+LAN_IP = ''
 PASSWORD_ROUNDS = 260000
 MAX_JSON_BYTES = 12 * 1024 * 1024
 LOGIN_FAILS = {}
@@ -48,8 +51,8 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_FAILURES = 6
 MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
-VERSION = '1.0-pruebas'
-SCHEMA_VERSION = 3
+VERSION = '2.0-v6-pruebas'
+SCHEMA_VERSION = 4
 
 
 def validate_public_origin(value):
@@ -72,16 +75,50 @@ def validate_public_origin(value):
     return 'https://' + hostname + (f':{port}' if port not in (None, 443) else '')
 
 
-def configure(data_dir=None, port=8765, demo=False, *, public_origin=None):
-    global DATA_DIR, DB_PATH, PORT, DEMO_MODE, PUBLIC_ORIGIN
+def validate_lan_ip(value):
+    """Solo una IPv4 RFC 1918 explícita, sin comodines, DNS ni red pública."""
+    text = str(value or '').strip()
+    try:
+        address = ipaddress.IPv4Address(text)
+    except ipaddress.AddressValueError:
+        raise ValueError('La IP de oficina debe ser una IPv4 privada, por ejemplo 192.168.1.20.') from None
+    private_networks = ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
+    if not any(address in ipaddress.IPv4Network(network) for network in private_networks):
+        raise ValueError('Usa una IP de la red privada de la oficina: 10.x.x.x, 172.16–31.x.x o 192.168.x.x.')
+    return str(address)
+
+
+def validate_lan_data_directory(value):
+    """SQLite permanece en un disco local del servidor, nunca en una unidad SMB."""
+    text = str(value)
+    if text.startswith(('\\\\', '//')):
+        raise ValueError('La base de datos debe estar en una carpeta del disco local, no en una ruta de red.')
+    candidate = Path(value).resolve()
+    if sys.platform == 'win32':
+        import ctypes
+        # DRIVE_REMOTE también detecta unidades de red con letra (F:, H:, etc.).
+        drive_type = ctypes.windll.kernel32.GetDriveTypeW(str(candidate.anchor))
+        if drive_type == 4:
+            raise ValueError('La carpeta de datos está en una unidad de red. Elige una carpeta del disco local de la PC principal.')
+    return candidate
+
+
+def configure(data_dir=None, port=8765, demo=False, *, public_origin=None, lan_ip=None):
+    global DATA_DIR, DB_PATH, HOST, PORT, DEMO_MODE, PUBLIC_ORIGIN, LAN_IP
     origin = validate_public_origin(public_origin) if public_origin else ''
-    DATA_DIR = Path(data_dir) if data_dir is not None else ROOT / ('datos_demo' if demo else 'datos_locales')
-    DATA_DIR = DATA_DIR.resolve()
-    DB_PATH = DATA_DIR / 'laboratorio.db'
-    PORT, DEMO_MODE = int(port), bool(demo)
-    PUBLIC_ORIGIN = origin
-    if not 0 <= PORT <= 65535:
+    address = validate_lan_ip(lan_ip) if lan_ip is not None else ''
+    if origin and address:
+        raise ValueError('El modo de red local y el perfil de publicación HTTPS se configuran por separado.')
+    selected_port = int(port)
+    if not 0 <= selected_port <= 65535:
         raise ValueError('Puerto inválido.')
+    directory = Path(data_dir) if data_dir is not None else ROOT / ('datos_demo' if demo else 'datos_locales')
+    DATA_DIR = validate_lan_data_directory(data_dir if data_dir is not None else directory) if address else directory.resolve()
+    DB_PATH = DATA_DIR / 'laboratorio.db'
+    PORT, DEMO_MODE = selected_port, bool(demo)
+    PUBLIC_ORIGIN = origin
+    LAN_IP = address
+    HOST = address or '127.0.0.1'
 
 
 def utcnow():
@@ -329,6 +366,19 @@ class Handler(BaseHTTPRequestHandler):
     def fail(self, message, status=400, **details):
         self.json({'error': message, **details}, status)
 
+    def table_download(self, headers, rows, title, extension, basename):
+        if extension == 'csv':
+            body, mime = documents.write_csv(headers, rows, title), 'text/csv; charset=utf-8'
+        elif extension == 'xlsx':
+            body, mime = documents.write_xlsx(headers, rows, title), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        elif extension == 'pdf':
+            body, mime = documents.write_pdf(headers, rows, title), 'application/pdf'
+        else:
+            raise production.ApiError('Formato de exportación no permitido.', 404)
+        return self.send_bytes(body, mime, headers={
+            'Content-Disposition': f'attachment; filename="{basename}-{local_today().isoformat()}.{extension}"'
+        })
+
     def current(self):
         cookie = SimpleCookie()
         try:
@@ -364,6 +414,8 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get('Host')
         if PUBLIC_ORIGIN:
             allowed = host == urlparse(PUBLIC_ORIGIN).netloc
+        elif LAN_IP:
+            allowed = host == f'{LAN_IP}:{port}'
         else:
             allowed = host in (f'{HOST}:{port}', f'localhost:{port}')
         if not allowed:
@@ -373,7 +425,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def check_origin(self):
         port = self.server.server_port
-        allowed = (PUBLIC_ORIGIN,) if PUBLIC_ORIGIN else (None, f'http://{HOST}:{port}', f'http://localhost:{port}')
+        if PUBLIC_ORIGIN:
+            allowed = (PUBLIC_ORIGIN,)
+        elif LAN_IP:
+            allowed = (f'http://{LAN_IP}:{port}',)
+        else:
+            allowed = (None, f'http://{HOST}:{port}', f'http://localhost:{port}')
         if self.headers.get('Origin') not in allowed:
             self.fail('Origen no permitido.', 403)
             return False
@@ -455,6 +512,22 @@ class Handler(BaseHTTPRequestHandler):
                 for row in db.execute('SELECT kind,label FROM catalog WHERE active=1 ORDER BY kind,label'):
                     result[row['kind']].append(row['label'])
                 return self.json(result)
+            report_match = re.fullmatch(r'/api/(calidad|comparativas)\.(csv|xlsx|pdf)', path)
+            if report_match:
+                report, extension = report_match.groups()
+                headers, rows, title = analytics.export_rows(db, user, query, report)
+                return self.table_download(headers, rows, title, extension, report)
+            certificate_match = re.fullmatch(r'/api/ordenes/(\d+)/acta\.(pdf|json)', path)
+            if certificate_match:
+                result = production.handle_get(db, user, f'/api/ordenes/{certificate_match[1]}/acta', query)
+                if result is None:
+                    raise production.ApiError('Acta no encontrada.', 404)
+                if certificate_match[2] == 'json':
+                    return self.send_bytes(json.dumps(result, ensure_ascii=False, indent=2).encode(), 'application/json; charset=utf-8', headers={
+                        'Content-Disposition': f'attachment; filename="acta-lote-{certificate_match[1]}.json"'
+                    })
+                headers, rows, title = documents.certificate_table(result['certificate'])
+                return self.table_download(headers, rows, title, 'pdf', 'acta-lote-' + certificate_match[1])
             if path in ('/api/export.csv', '/api/export.xlsx', '/api/export.pdf'):
                 table = production.export_rows(db, user, query)
                 extension = path.rsplit('.', 1)[1]
@@ -477,6 +550,9 @@ class Handler(BaseHTTPRequestHandler):
                     body, mime = documents.write_csv(headers, []), 'text/csv; charset=utf-8'
                 return self.send_bytes(body, mime, headers={'Content-Disposition': f'attachment; filename="plantilla-{activity}.{extension}"'})
             result = production.handle_get(db, user, path, query)
+            if result is not None:
+                return self.json(result)
+            result = analytics.handle_get(db, user, path, query)
             if result is not None:
                 return self.json(result)
         self.fail('Ruta no encontrada.', 404)
@@ -692,7 +768,12 @@ def seed_demo(admin_password=None):
             responsible = techs[offset % 2]
             entries = [
                 ('limpieza', 12 + offset, {'voltaje': '240V', 'tiempo_minutos': 40 + offset, 'condicion_visual': 'Bueno', 'sap': '1003913', 'clasificacion': 'Recuperado'}),
-                ('revision', 1, {'serie': '000' + str(1000 + offset), 'marca': 'Marca de prueba', 'voltaje': '240V', 'sap': '1003913', 'condicion': 'Base Rota', 'clasificacion': 'Recuperado', 'resultado': 'No apto'}),
+                ('revision', 1, {'serie': '000' + str(1000 + offset), 'marca': 'Marca de prueba', 'modelo': 'Modelo ficticio A',
+                                 'voltaje': '240V', 'sap': '1003913', 'condicion': 'Base Rota' if offset % 4 == 2 else 'Medidor en Óptimas Condiciones',
+                                 'clasificacion': 'Recuperado', 'resultado': ['Apto', 'Apto', 'No apto', 'Pendiente'][offset % 4],
+                                 'tipo_inspeccion': 'Calibración', 'valor_referencia': 100,
+                                 'valor_medido': 101.5 if offset % 4 == 2 else 100 + (offset % 3) * 0.25,
+                                 'tolerancia_pct': 1, 'fallo': 'Desviación de medición' if offset % 4 == 2 else ''}),
                 ('configuracion', 5 + offset, {'tipo_configuracion': 'Prepago', 'sap': '1003913', 'marca': 'Marca de prueba', 'voltaje': '240V'}),
                 ('sellado', 1, {'serie': '000' + str(2000 + offset), 'sap': '1003913', 'marca': 'Marca de prueba', 'voltaje': '240V', 'clasificacion': 'Recuperado'}),
                 ('asignacion', 20 + offset, {'tipo_articulo': 'Sello', 'sap': 'SELLO-DEMO', 'destino': 'Equipo de prueba'}),
@@ -710,10 +791,14 @@ def main():
     parser.add_argument('--demo', action='store_true', help='Datos ficticios en una base separada de los registros normales')
     parser.add_argument('--data-dir', help='Directorio local de datos (nunca una unidad compartida)')
     parser.add_argument('--port', type=int, help='Puerto local; por defecto 8765 normal y 8766 demo')
+    parser.add_argument('--lan-ip', help='IP privada fija de esta PC principal para compartir en la oficina; ejemplo 192.168.1.20')
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args()
     port = args.port if args.port is not None else (DEFAULT_DEMO_PORT if args.demo else DEFAULT_NORMAL_PORT)
-    configure(args.data_dir, port, args.demo)
+    try:
+        configure(args.data_dir, port, args.demo, lan_ip=args.lan_ip)
+    except ValueError as error:
+        parser.error(str(error))
     # Reservar el puerto antes de modificar la base evita migrar mientras una
     # instancia anterior sigue atendiendo e insertando revisiones antiguas.
     server = ThreadingHTTPServer((HOST, PORT), Handler, bind_and_activate=False)
@@ -723,6 +808,8 @@ def main():
         except OSError as error:
             if error.errno in (errno.EADDRINUSE, 10048):
                 raise SystemExit(f'El puerto {PORT} ya está en uso. Cierra la otra consola de la aplicación y vuelve a abrir el iniciador.') from None
+            if LAN_IP and error.errno in (errno.EADDRNOTAVAIL, 10049):
+                raise SystemExit(f'La IP {LAN_IP} no está asignada a esta PC. Comprueba ipconfig y la reserva de IP con TI.') from None
             raise
         init_db()
         if args.demo:
@@ -733,7 +820,9 @@ def main():
         raise
     url = f'http://{HOST}:{server.server_port}'
     mode = 'DEMOSTRACIÓN CON DATOS FICTICIOS' if args.demo else 'INSTALACIÓN NORMAL'
-    print(f'Laboratorio de Medidas — Control de Producción {VERSION}\n{mode}\n{url}\nSolo prueba local. Ctrl+C para cerrar.', flush=True)
+    network = ('RED INTERNA: comparte esta dirección solo en la oficina. La PC principal debe permanecer encendida.'
+               if LAN_IP else 'Prueba en este equipo; acceso por loopback.')
+    print(f'Laboratorio de Medidas — Control de Producción {VERSION}\n{mode}\n{url}\n{network}\nCtrl+C para cerrar.', flush=True)
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

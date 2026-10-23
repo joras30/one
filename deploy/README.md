@@ -50,7 +50,10 @@ confirma en el almacenamiento persistente y conserva la versión anterior.
 Los commits en `demo-web` ejecutan **Actions → Construir demo gratuita**
 (`.github/workflows/pages.yml`): instala las dependencias fijadas, construye y
 verifica la distribución y guarda el artefacto `demo-github-pages` durante un día.
-Este workflow no publica el sitio.
+El workflow consulta el modo que ya esté configurado en Pages. Cuando es
+**GitHub Actions**, publica ese mismo artefacto automáticamente. Cuando es
+**Deploy from a branch**, deja la publicación a la rama configurada y evita
+intentar un despliegue incompatible.
 
 Para entregar una actualización, se construye la distribución y se actualiza su
 contenido en la raíz de la rama `gh-pages`, incluido `.nojekyll`. GitHub Pages
@@ -77,6 +80,11 @@ para la siguiente fase, dentro de los límites del proveedor.
 Esa conexión central aún no está implementada aquí ni existe un proyecto creado
 para ella. Requiere cuenta propia, migraciones y permisos del lado servidor.
 Esta demo individual no debe presentarse como una base compartida.
+
+Para compartir una base entre los equipos de la oficina ya está disponible el
+servidor local documentado en [RED_LOCAL.md](RED_LOCAL.md): todos abren el enlace
+de la PC principal y SQLite permanece en su disco. Este modo no usa el
+almacenamiento individual de Pages ni requiere un proveedor de base de datos.
 
 No se activarán planes de pago ni mejoras automáticas de facturación. El uso
 operativo con empleados o datos reales requiere validar seguridad y respaldos.

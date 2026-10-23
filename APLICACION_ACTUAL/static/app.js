@@ -14,9 +14,11 @@ const isManager = () => ['supervisor','administrador'].includes(S.user?.role);
 const isVisitor = () => S.user?.role === 'visitante';
 const activeActivities = () => S.activities.filter((a) => a.active && (isManager() || a.assigned !== false));
 const personOptions = () => S.users.filter((u) => u.active && u.role !== 'visitante');
-const labels = {serie:'Serie',sap:'Código SAP',marca:'Marca / modelo',voltaje:'Voltaje',condicion:'Condición técnica',clasificacion:'Nuevo / recuperado',resultado:'Resultado de revisión',tiempo_minutos:'Tiempo del lote (min)',condicion_visual:'Condición visual',tipo_configuracion:'Tipo de configuración',destino:'Destinatario / destino',tipo_articulo:'Tipo de artículo',numero_orden:'Número de orden',proceso:'Proceso de recepción',cantidad_esperada:'Cantidad esperada',observaciones:'Observaciones',work_date:'Fecha de trabajo',responsible_id:'Responsable',quantity:'Cantidad',state:'Estado',name:'Nombre',active:'Activo',role:'Perfil',activity_ids:'Actividades asignadas'};
+const labels = {serie:'Serie',sap:'Código SAP',marca:'Marca',modelo:'Modelo',sap_config_id:'Configuración SAP',tipo_inspeccion:'Tipo de inspección',fallo:'Fallo detectado',valor_referencia:'Valor de referencia',valor_medido:'Valor medido',tolerancia_pct:'Tolerancia (%)',desviacion_pct:'Desviación (%)',fuera_tolerancia:'Fuera de tolerancia',voltaje:'Voltaje',condicion:'Condición técnica',clasificacion:'Nuevo / recuperado',resultado:'Resultado de revisión',tiempo_minutos:'Tiempo del lote (min)',condicion_visual:'Condición visual',tipo_configuracion:'Tipo de configuración',destino:'Destinatario / destino',tipo_articulo:'Tipo de artículo',numero_orden:'Número de orden',proceso:'Proceso de recepción',cantidad_esperada:'Cantidad esperada',observaciones:'Observaciones',work_date:'Fecha de trabajo',responsible_id:'Responsable',quantity:'Cantidad',state:'Estado',name:'Nombre',active:'Activo',role:'Perfil',activity_ids:'Actividades asignadas'};
 const pages = {
   dashboard:['PANORAMA GENERAL','Resumen de producción','Una vista clara del trabajo y los resultados del laboratorio.'],
+  quality:['CONTROL DE CALIDAD','Inspección y calibración','Resultados técnicos, fallos y desviaciones con criterios visibles.'],
+  comparison:['ANALÍTICA','Comparar períodos','Mide la variación entre períodos conservando cada actividad y unidad.'],
   capture:['OPERACIÓN DIARIA','Registrar actividad','Captura lo realizado; cada actividad pide sus propios datos.'],
   records:['PRODUCCIÓN','Registros del laboratorio','Consulta, filtra y descarga el detalle de la actividad.'],
   history:['TRAZABILIDAD','Consultar medidor','Cada revisión conserva su fecha, resultado y responsable.'],
@@ -120,7 +122,8 @@ async function loadReferences() {
   $('goal-responsible').innerHTML=options(people,$('goal-responsible').value,'Selecciona colaborador');
   $('goal-activity').innerHTML=options(activeActivities().map((a)=>({value:a.id,label:a.name})),$('goal-activity').value,'Selecciona actividad');
   $('filter-voltage').innerHTML=options(S.catalog.voltajes || [],$('filter-voltage').value,'Todos');
-  $('sap-voltage').innerHTML=options(S.catalog.voltajes || [],$('sap-voltage').value);
+  $('filter-condition').innerHTML=options(S.catalog.condiciones || [],$('filter-condition').value,'Todas');
+  $('voltage-list').innerHTML=(S.catalog.voltajes || []).map((x)=>`<option value="${escapeHtml(x)}"></option>`).join('');
   $('brands-list').innerHTML=(S.catalog.marcas || []).map((x)=>`<option value="${escapeHtml(x)}"></option>`).join('');
   $('sap-list').innerHTML=S.sap.filter((x)=>x.active).map((x)=>`<option value="${escapeHtml(x.code)}">${escapeHtml(x.voltage)} · ${escapeHtml(x.classification)}</option>`).join('');
 }
@@ -135,7 +138,7 @@ async function enterApp(me) {
 }
 function filterQuery(extra={}) {
   const q=new URLSearchParams();
-  for(const [key,id] of [['desde','filter-from'],['hasta','filter-to'],['activity_id','filter-activity'],['sap','filter-sap'],['voltage','filter-voltage']]) if($(id).value.trim()) q.set(key,$(id).value.trim());
+  for(const [key,id] of [['desde','filter-from'],['hasta','filter-to'],['activity_id','filter-activity'],['sap','filter-sap'],['voltage','filter-voltage'],['brand','filter-brand'],['model','filter-model'],['condition','filter-condition']]) if($(id).value.trim()) q.set(key,$(id).value.trim());
   if(isManager() && $('filter-responsible').value) q.set('responsible_id',$('filter-responsible').value);
   Object.entries(extra).forEach(([key,value])=>{if(value!=='' && value!==undefined && value!==null) q.set(key,String(value));});
   return q.toString();
@@ -143,27 +146,28 @@ function filterQuery(extra={}) {
 async function navigate(view) {
   if(!pages[view]) view='dashboard';
   if(!isManager() && ['activities','import','catalogs','users','audit'].includes(view)) view='dashboard';
-  if(isVisitor() && !['dashboard','account'].includes(view)) view='dashboard';
+  if(isVisitor() && !['dashboard','quality','comparison','account'].includes(view)) view='dashboard';
   if(S.user?.must_change && view!=='account') view='account';
   S.view=view; const ticket=++S.navigation; setMenu(false); clearError($('page-error'));
   document.querySelectorAll('.view').forEach((n)=>n.classList.add('hidden')); $(`view-${view}`).classList.remove('hidden');
   document.querySelectorAll('[data-view]').forEach((n)=>n.classList.toggle('active',n.dataset.view===view));
   const title=pages[view]; $('page-eyebrow').textContent=title[0]; $('page-title').textContent=title[1]; $('page-description').textContent=title[2]; $('current-section').textContent=title[1];
-  $('global-filters').classList.toggle('hidden',!['dashboard','records'].includes(view)); $('quick-capture').classList.toggle('hidden',isVisitor() || view==='capture' || S.user?.must_change);
+  $('global-filters').classList.toggle('hidden',!['dashboard','records','quality','comparison','receipts'].includes(view)); $('quick-capture').classList.toggle('hidden',isVisitor() || view==='capture' || S.user?.must_change);
+  $('filter-from-wrap').classList.toggle('hidden',view==='comparison' || view==='receipts');$('filter-to-wrap').classList.toggle('hidden',view==='comparison' || view==='receipts');$('filter-activity-wrap').classList.toggle('hidden',view==='quality' || view==='receipts');
   $('loading-indicator').classList.remove('hidden');
-  try { await ({dashboard:loadDashboard,capture:loadCapture,records:loadRecords,history:async()=>{},activities:loadActivities,import:loadImport,receipts:loadReceipts,goals:loadGoals,users:loadUsers,catalogs:loadCatalogs,audit:loadAudit,account:loadAccount}[view])(); }
+  try { await ({dashboard:loadDashboard,quality:loadQuality,comparison:loadComparison,capture:loadCapture,records:loadRecords,history:async()=>{},activities:loadActivities,import:loadImport,receipts:loadReceipts,goals:loadGoals,users:loadUsers,catalogs:loadCatalogs,audit:loadAudit,account:loadAccount}[view])(); }
   catch(error) { if(ticket===S.navigation) showError($('page-error'),error); }
   finally { if(ticket===S.navigation) $('loading-indicator').classList.add('hidden'); }
 }
 
 function svgChart(id, data, title, unit='registros') {
-  if(!data?.length || !data.some((x)=>Number(x.value))) { $(id).innerHTML=empty('Los datos aparecerán cuando haya actividad en este período.','Aún no hay datos'); return; }
-  const rows=data.slice(0,12), width=Math.max(300,Math.min(650,$(id).clientWidth || 650)), barWidth=width-72, valueX=width-4, rowHeight=47, footerLines=chartFooter(chartContext(),Math.floor(width/5)), height=68+rows.length*rowHeight+Math.max(0,footerLines.length-1)*13, max=Math.max(...rows.map((r)=>Number(r.value)||0),1);
-  const chartRows=rows.map((row,i)=>{const y=36+i*rowHeight;const value=Number(row.value)||0;const label=String(row.label || 'Sin informar');const shortened=label.length>32?`${label.slice(0,31)}…`:label;return `<g><title>${escapeHtml(label)}: ${escapeHtml(fmt(value))} ${escapeHtml(row.unit || unit)}</title><text x="0" y="${y}" fill="#53657d" font-family="Arial,sans-serif" font-size="12">${escapeHtml(shortened)}</text><text x="${valueX}" y="${y}" text-anchor="end" fill="#8290a3" font-family="Arial,sans-serif" font-size="10">${escapeHtml(row.unit || unit)}</text><rect x="0" y="${y+9}" width="${barWidth}" height="10" rx="5" fill="#eef2f7"/><rect x="0" y="${y+9}" width="${Math.max(1,barWidth*value/max)}" height="10" rx="5" fill="${i===0?'#ed8a24':'#244e87'}"/><text x="${valueX}" y="${y+16}" text-anchor="end" fill="#17385e" font-family="Arial,sans-serif" font-size="12" font-weight="bold">${escapeHtml(fmt(value))}</text></g>`;}).join('');
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="chart-svg" role="img" aria-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title><rect width="${width}" height="${height}" fill="#ffffff"/><text x="0" y="16" fill="#17385e" font-family="Arial,sans-serif" font-size="13" font-weight="bold">${escapeHtml(title)}</text>${chartRows}${footerLines.map((line,i)=>`<text x="0" y="${60+rows.length*rowHeight+i*13}" fill="#8290a3" font-family="Arial,sans-serif" font-size="9">${escapeHtml(line)}</text>`).join('')}</svg>`;
+  if(!data?.length || !data.some((x)=>Number(x.value))) { delete S.charts[id.replace('chart-','')];$(id).innerHTML=empty('Los datos aparecerán cuando haya actividad en este período.','Aún no hay datos'); return; }
+  const rows=data.slice(0,12), width=Math.max(300,Math.min(650,$(id).clientWidth || 650)), barWidth=width-72, valueX=width-4, rowHeight=47, footerLines=chartFooter(`${chartContext()}${data.length>12?` · Se muestran 12 de ${data.length} categorías`:''}`,Math.floor(width/5)), height=68+rows.length*rowHeight+Math.max(0,footerLines.length-1)*13, max=Math.max(...rows.map((r)=>Number(r.value)||0),1);
+  const chartRows=rows.map((row,i)=>{const y=36+i*rowHeight;const value=Number(row.value)||0;const label=String(row.label || 'Sin informar');const shortened=label.length>32?`${label.slice(0,31)}…`:label;const color=id==='chart-quality-results'?['#53d6a0','#ff8b95','#f7d47a','#93a4bd'][i]:(i===0?'#ed8a24':'#73a5e7');return `<g><title>${escapeHtml(label)}: ${escapeHtml(fmt(value))} ${escapeHtml(row.unit || unit)}</title><text x="0" y="${y}" fill="#afbed1" font-family="Arial,sans-serif" font-size="12">${escapeHtml(shortened)}</text><text x="${valueX}" y="${y}" text-anchor="end" fill="#8b9fb8" font-family="Arial,sans-serif" font-size="10">${escapeHtml(row.unit || unit)}</text><rect x="0" y="${y+9}" width="${barWidth}" height="10" rx="5" fill="#26364c"/><rect x="0" y="${y+9}" width="${Math.max(0,barWidth*value/max)}" height="10" rx="5" fill="${color}"/><text x="${valueX}" y="${y+16}" text-anchor="end" fill="#e6edf7" font-family="Arial,sans-serif" font-size="12" font-weight="bold">${escapeHtml(fmt(value))}</text></g>`;}).join('');
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="chart-svg" role="img" aria-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title><rect width="${width}" height="${height}" fill="#142238"/><text x="0" y="16" fill="#e6edf7" font-family="Arial,sans-serif" font-size="13" font-weight="bold">${escapeHtml(title)}</text>${chartRows}${footerLines.map((line,i)=>`<text x="0" y="${60+rows.length*rowHeight+i*13}" fill="#8b9fb8" font-family="Arial,sans-serif" font-size="9">${escapeHtml(line)}</text>`).join('')}</svg>`;
   $(id).innerHTML=svg; S.charts[id.replace('chart-','')]={svg,title,data,unit};
 }
-function chartContext() { const from=$('filter-from').value,to=$('filter-to').value;const scope=[`${from || 'Todo el historial'}${to?' al '+to:''}`,S.user?.role==='tecnico'?'Producción propia':'Laboratorio de Medidas'];for(const [id,label] of [['filter-activity','Actividad'],['filter-responsible','Responsable'],['filter-sap','SAP'],['filter-voltage','Voltaje']]){const input=$(id);if(!input.value || id==='filter-responsible'&&!isManager())continue;scope.push(`${label}: ${input.tagName==='SELECT'?input.selectedOptions[0]?.textContent:input.value}`);}return scope.join(' · '); }
+function chartContext() { const from=$('filter-from').value,to=$('filter-to').value;const scope=[`${from || 'Todo el historial'}${to?' al '+to:''}`,S.user?.role==='tecnico'?'Producción propia':'Laboratorio de Medidas'];if(S.view==='quality')scope.push('Actividad: Revisión técnica');for(const [id,label] of [['filter-activity','Actividad'],['filter-responsible','Responsable'],['filter-sap','SAP'],['filter-voltage','Voltaje'],['filter-brand','Marca'],['filter-model','Modelo'],['filter-condition','Condición']]){const input=$(id);if(!input.value || id==='filter-responsible'&&!isManager() || S.view==='quality'&&id==='filter-activity')continue;scope.push(`${label}: ${input.tagName==='SELECT'?input.selectedOptions[0]?.textContent:input.value}`);}return scope.join(' · '); }
 function chartFooter(text,limit) {const words=text.split(/\s+/),lines=[];let line='';for(let word of words){while(word.length>limit){if(line){lines.push(line);line='';}lines.push(word.slice(0,limit));word=word.slice(limit);}if((line+' '+word).trim().length>limit){lines.push(line);line=word;}else line=(line+' '+word).trim();}if(line)lines.push(line);return lines;}
 async function loadDashboard() {
   const data=await api(`/api/dashboard?${filterQuery()}`);
@@ -173,6 +177,74 @@ async function loadDashboard() {
   svgChart('chart-activity',data.by_activity,'Producción por actividad','unidades'); svgChart('chart-day',data.by_day,'Registros por día'); svgChart('chart-voltage',data.by_voltage,'Registros por voltaje'); if(isManager()) svgChart('chart-collaborator',data.by_collaborator,'Registros por colaborador');
   $('dashboard-goals').innerHTML=renderGoals(data.goals || [],true);
 }
+function metricCards(items) {
+  return items.map(([label,value,note,tone=''])=>`<article class="metric-card ${escapeHtml(tone)}"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${value===null || value===undefined?'—':typeof value==='string'?escapeHtml(value):fmt(value)}</strong><span class="metric-note">${escapeHtml(note || '')}</span></article>`).join('');
+}
+function signalBadge(signal,label) {
+  const color=signal==='verde'?'good':signal==='rojo'?'danger':'warn',icon=signal==='verde'?'🟢':signal==='rojo'?'🔴':'🟡';
+  return `<span class="badge ${color} operational-signal"><span aria-hidden="true">${icon}</span>${escapeHtml(label)}</span>`;
+}
+function percent(value) {return value===null || value===undefined?'—':`${fmt(value)} %`;}
+function signed(value) {return value>0?`+${fmt(value)}`:fmt(value);}
+function variation(value,state) {return value===null || state==='sin_base'?'Sin base':`${signed(value)} %`;}
+function granularityLabel(value) {return ({diaria:'Diaria',semanal:'Semanal · semana ISO',mensual:'Mensual',anual:'Anual'})[value] || value;}
+async function loadQuality() {
+  const query=new URLSearchParams(filterQuery({granularity:$('quality-granularity').value}));query.delete('activity_id');
+  const data=await api(`/api/calidad?${query}`),summary=data.summary;
+  $('quality-status').innerHTML=signalBadge(summary.traffic_light,summary.traffic_light==='rojo'?'Hay rechazos o mediciones fuera de tolerancia':summary.traffic_light==='verde'?'Evaluaciones aprobadas':'Revisar pendientes o datos sin evaluación');
+  $('quality-metrics').innerHTML=metricCards([
+    ['Revisiones técnicas',summary.total,'Registros válidos en el período'],['Evaluaciones concluidas',summary.evaluated,'Apto + No apto'],
+    ['Tasa de aprobación',percent(summary.approval_rate),`${fmt(summary.approved)} aprobadas / ${fmt(summary.evaluated)} evaluadas`,'positive'],['Tasa de rechazo',percent(summary.rejection_rate),`${fmt(summary.rejected)} rechazadas / ${fmt(summary.evaluated)} evaluadas`],
+    ['Mediciones de calibración',summary.calibrations,'Con referencia y medición registradas'],['Fuera de tolerancia',summary.calibrations_outside_tolerance,'Desviación absoluta superior al límite'],
+    ['Desviación media',percent(summary.mean_deviation_pct),'Promedio de las desviaciones con signo'],['Desviación absoluta media',percent(summary.mean_absolute_deviation_pct),'Promedio de la magnitud del error']]);
+  $('quality-denominator').textContent=`Las tasas usan ${fmt(summary.evaluated)} evaluaciones concluidas. Pendientes: ${fmt(summary.pending)}. Sin resultado: ${fmt(summary.without_result)}. Los registros sin decisión no se cuentan como aprobados ni rechazados. El semáforo es rojo si hay rechazos o mediciones fuera de tolerancia; amarillo si faltan resultados; verde si las evaluaciones están aprobadas.`;
+  svgChart('chart-quality-results',[{label:'Aprobadas',value:summary.approved},{label:'Rechazadas',value:summary.rejected},{label:'Pendientes',value:summary.pending},{label:'Sin resultado',value:summary.without_result}],'Resultados de revisión técnica');
+  svgChart('chart-quality-failures',data.by_failure || [],'Fallos detectados');
+  $('quality-technicians').innerHTML=table(['Técnico','Revisiones / evaluadas','Aprobación','Rechazo','Pendientes / sin resultado','Calibraciones','Fuera de tolerancia','Desviación media','Desviación absoluta media'],(data.by_technician || []).map((row)=>[
+    `<strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.username || '')}</small>`,`${fmt(row.total)} / ${fmt(row.evaluated)}`,percent(row.approval_rate),percent(row.rejection_rate),`${fmt(row.pending)} / ${fmt(row.without_result)}`,fmt(row.calibrations),row.calibrations_outside_tolerance?signalBadge('rojo',fmt(row.calibrations_outside_tolerance)):fmt(0),percent(row.mean_deviation_pct),percent(row.mean_absolute_deviation_pct)]));
+  $('quality-period-label').textContent=`${granularityLabel(data.period?.granularity || $('quality-granularity').value)} · ${data.period?.desde || $('filter-from').value || 'Inicio del historial'} al ${data.period?.hasta || $('filter-to').value || today()}`;
+  $('quality-timeline').innerHTML=table(['Intervalo','Revisiones','Aprobadas','Rechazadas','Pendientes','Sin resultado','Aprobación','Fuera de tolerancia'],(data.by_period || []).map((row)=>[escapeHtml(row.label),fmt(row.total),fmt(row.approved),fmt(row.rejected),fmt(row.pending),fmt(row.without_result),percent(row.approval_rate),fmt(row.calibrations_outside_tolerance)]));
+  for(const format of ['xlsx','pdf'])$(`quality-export-${format}`).href=`/api/calidad.${format}?${query}`;
+}
+function comparisonChart(data) {
+  const container=$('chart-comparison'),rows=(data.rows || []).slice(0,12);
+  if(!rows.length){delete S.charts.comparison;container.innerHTML=empty('La comparación aparecerá cuando haya producción en alguno de los períodos.','Sin actividad para comparar');return;}
+  const width=Math.max(330,Math.min(760,container.clientWidth || 760)),barWidth=width-90,valueX=width-3,rowHeight=78;
+  const context=`A: ${data.period_a.from} al ${data.period_a.to} · B: ${data.period_b.from} al ${data.period_b.to} · ${S.user?.role==='tecnico'?'Producción propia':'Laboratorio de Medidas'}${data.rows.length>12?` · Se muestran 12 de ${data.rows.length} filas`:''}`;
+  const filters=[['filter-activity','Actividad'],['filter-responsible','Colaborador'],['filter-sap','SAP'],['filter-voltage','Voltaje'],['filter-brand','Marca'],['filter-model','Modelo'],['filter-condition','Condición']].filter(([id])=>$(id).value && (id!=='filter-responsible' || isManager())).map(([id,label])=>`${label}: ${$(id).tagName==='SELECT'?$(id).selectedOptions[0].textContent:$(id).value}`).join(' · ');
+  const footer=chartFooter([context,filters,'Escala independiente por fila: compara A y B dentro de la misma actividad y unidad.'].filter(Boolean).join(' · '),Math.floor(width/5.1));
+  const height=70+rows.length*rowHeight+footer.length*13;
+  const bars=rows.map((row,index)=>{const y=51+index*rowHeight,max=Math.max(row.a,row.b,1),label=`${row.activity_name} · ${row.unit}`,shortened=label.length>Math.floor(width/7)?label.slice(0,Math.floor(width/7)-1)+'…':label;return `<g><title>${escapeHtml(label)}: A ${fmt(row.a)}, B ${fmt(row.b)}</title><text x="0" y="${y}" fill="#cfdef3" font-size="12">${escapeHtml(shortened)}</text><text x="0" y="${y+23}" fill="#a8caf4" font-size="10">A</text><rect x="17" y="${y+13}" width="${barWidth}" height="12" rx="3" fill="#22344d"/><rect x="17" y="${y+13}" width="${barWidth*row.a/max}" height="12" rx="3" fill="#73a5e7"/><text x="${valueX}" y="${y+23}" fill="#d7e8ff" font-size="12" text-anchor="end">${escapeHtml(fmt(row.a))}</text><text x="0" y="${y+45}" fill="#ffc286" font-size="10">B</text><rect x="17" y="${y+35}" width="${barWidth}" height="12" rx="3" fill="#22344d"/><rect x="17" y="${y+35}" width="${barWidth*row.b/max}" height="12" rx="3" fill="#ef9a49"/><text x="${valueX}" y="${y+45}" fill="#ffe0bc" font-size="12" text-anchor="end">${escapeHtml(fmt(row.b))}</text></g>`;}).join('');
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="chart-svg" font-family="Arial,sans-serif" role="img" aria-label="Comparación A y B por actividad y unidad"><title>Comparación A y B por actividad y unidad</title><rect width="${width}" height="${height}" fill="#142238"/><text x="0" y="18" fill="#edf4ff" font-size="13" font-weight="bold">Comparación A / B · actividad y unidad</text>${bars}${footer.map((line,index)=>`<text x="0" y="${65+rows.length*rowHeight+index*13}" fill="#a5b8d2" font-size="9">${escapeHtml(line)}</text>`).join('')}</svg>`;
+  container.innerHTML=svg;S.charts.comparison={svg,title:'Comparación A y B',data:rows,unit:'unidades'};
+}
+
+function setComparisonDefaults() {
+  const day=today(),end=new Date(`${day}T12:00:00Z`),start=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth(),1,12)),previousEnd=new Date(start.valueOf()-86400000),duration=Math.round((end-start)/86400000),previousStart=new Date(previousEnd.valueOf()-duration*86400000);
+  const iso=(value)=>value.toISOString().slice(0,10);
+  $('comparison-a-from').value=iso(previousStart);$('comparison-a-to').value=iso(previousEnd);$('comparison-b-from').value=iso(start);$('comparison-b-to').value=day;
+}
+function comparisonQuery() {
+  const query=new URLSearchParams(filterQuery());query.delete('desde');query.delete('hasta');
+  for(const [name,id] of [['a_desde','comparison-a-from'],['a_hasta','comparison-a-to'],['b_desde','comparison-b-from'],['b_hasta','comparison-b-to'],['granularity','comparison-granularity']])query.set(name,$(id).value);
+  if(!query.get('a_desde') || !query.get('a_hasta') || !query.get('b_desde') || !query.get('b_hasta'))throw new Error('Completa las cuatro fechas de los períodos.');
+  if(query.get('a_desde')>query.get('a_hasta') || query.get('b_desde')>query.get('b_hasta'))throw new Error('La fecha inicial de cada período debe ser anterior o igual a su fecha final.');
+  return query;
+}
+async function loadComparison() {
+  const query=comparisonQuery(),data=await api(`/api/comparativas?${query}`),summary=data.summary;clearError($('comparison-error'));
+  $('comparison-metrics').innerHTML=metricCards([
+    ['Registros del período A',summary.records_a,'Base de la comparación'],['Registros del período B',summary.records_b,'Período comparado'],
+    ['Variación absoluta',signed(summary.delta_records),'Registros de B − registros de A'],['Variación porcentual',variation(summary.percent_records,summary.percent_state),'(B − A) / A × 100']]);
+  $('comparison-periods').textContent=`A: ${prettyDate(data.period_a.from)} — ${prettyDate(data.period_a.to)} (${fmt(data.period_a.days)} días). B: ${prettyDate(data.period_b.from)} — ${prettyDate(data.period_b.to)} (${fmt(data.period_b.days)} días). ${data.period_a.days!==data.period_b.days?'Los períodos tienen distinta duración; las cantidades no se normalizan por día.':'Ambos períodos tienen la misma duración.'}`;
+  $('comparison-table').innerHTML=table(['Actividad','Unidad','Cantidad A','Cantidad B','Variación absoluta','Variación %','Registros A / B'],(data.rows || []).map((row)=>[
+    `<strong>${escapeHtml(row.activity_name)}</strong>`,escapeHtml(row.unit),fmt(row.a),fmt(row.b),`<span class="numeric-change ${row.delta<0?'negative':row.delta>0?'positive':''}">${escapeHtml(signed(row.delta))}</span>`,escapeHtml(variation(row.percent,row.percent_state)),`${fmt(row.records_a)} / ${fmt(row.records_b)}`]),'Ninguna actividad tiene registros en estos períodos y filtros.');
+  const seriesTable=(rows)=>table(['Intervalo','Registros','Cantidades por unidad'],rows.map((row)=>[escapeHtml(row.label),fmt(row.records),Object.entries(row.totals_by_unit || {}).map(([unit,value])=>`${fmt(value)} ${escapeHtml(unit)}`).join('<br>') || '—']));
+  $('comparison-series-a').innerHTML=seriesTable(data.series_a || []);$('comparison-series-b').innerHTML=seriesTable(data.series_b || []);
+  S.comparison=data;comparisonChart(data);
+  for(const format of ['xlsx','pdf'])$(`comparison-export-${format}`).href=`/api/comparativas.${format}?${query}`;
+}
+
 function progress(value) { if(value===null || value===undefined) return '<span class="muted">Sin meta</span>'; const n=Number(value)||0;return `<div class="progress-cell"><progress max="100" value="${Math.min(100,Math.max(0,n))}" aria-label="Cumplimiento ${escapeHtml(fmt(n))} por ciento"></progress><strong>${fmt(n)}%</strong></div>`; }
 function downloadBlob(blob,name) { const link=document.createElement('a');const url=URL.createObjectURL(blob);link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500); }
 async function exportChart(key, format, button) {
@@ -205,10 +277,12 @@ function fieldHtml(field, value='', prefix='capture') {
   const key=field.key; const id=`${prefix}-field-${key}`; const required=field.required && !['checkbox','casilla'].includes(field.type)?' required':''; const common=`id="${escapeHtml(id)}" data-field="${escapeHtml(key)}"${required}`;
   const title=`${escapeHtml(field.label || labels[key] || key)}${field.required?' <span class="required-dot" aria-label="obligatorio">*</span>':' <small>Opcional</small>'}`;
   const type=field.type || 'text'; let input;
-  if(['select','seleccion'].includes(type)) input=`<select ${common}>${options(optionsFor(field),value)}</select>`;
+  if(key==='sap_config_id') input=`<select ${common}>${options(S.sap.flatMap((item)=>(item.configurations || []).map((config)=>({value:config.id,label:`${item.code} · ${config.label || config.voltage || 'Sin voltaje'} · ${config.classification || 'Sin clasificación'}`}))),value,'Automática si es inequívoca')}</select>`;
+  else if(key==='clasificacion' && prefix==='capture' && $('capture-activity').value==='sellado') input=`<input id="${escapeHtml(id)}" data-field="clasificacion" value="${escapeHtml(value)}" readonly placeholder="Se determina con el código SAP" aria-label="Clasificación automática por SAP">`;
+  else if(['select','seleccion'].includes(type)) input=`<select ${common}>${options(optionsFor(field),value)}</select>`;
   else if(['checkbox','casilla'].includes(type)) input=`<input ${common} type="checkbox"${value===true?' checked':''}>`;
   else if(key==='observaciones' || type==='textarea') input=`<textarea ${common} rows="3" maxlength="1500">${escapeHtml(value)}</textarea>`;
-  else { const inputType=['number','numero'].includes(type)?'number':['date','fecha'].includes(type)?'date':'text'; input=`<input ${common} type="${inputType}" value="${escapeHtml(value)}"${inputType==='number'?' min="0" step="any"':''}${key==='marca'?' list="brands-list"':''}${key==='sap'?' list="sap-list"':''}${key==='serie'?' autocomplete="off" maxlength="60"':''}${key==='sap'?' maxlength="60"':''}>`; }
+  else { const inputType=['number','numero'].includes(type)?'number':['date','fecha'].includes(type)?'date':'text'; input=`<input ${common} type="${inputType}" value="${escapeHtml(value)}"${inputType==='number'?` ${field.min!==undefined?`min="${escapeHtml(field.min)}"`:''} ${field.max!==undefined?`max="${escapeHtml(field.max)}"`:''} step="${field.integer?'1':'any'}"`:''}${key==='marca'?' list="brands-list"':''}${key==='sap'?' list="sap-list"':''}${key==='serie'?' autocomplete="off" maxlength="60"':''}${key==='sap'?' maxlength="60"':''}>`; }
   return `<label class="${key==='observaciones'?'full-width':''}${['checkbox','casilla'].includes(type)?' checkbox-label':''}"><span class="label-text">${title}</span>${input}</label>`;
 }
 function renderCaptureFields() {
@@ -220,18 +294,40 @@ function renderCaptureFields() {
   $('capture-quantity').readOnly=activity.mode==='individual'; if(activity.mode==='individual')$('capture-quantity').value='1';
   $('recorded-by-hint').textContent=`Capturado por ${S.user.name}. El responsable y el historial quedarán registrados.`;
   $('sap-hint').classList.add('hidden');
-  const sap=$('capture-field-sap'); if(sap)sap.addEventListener('change',updateSapHint);
+  const sap=$('capture-field-sap'); if(sap)sap.addEventListener('change',()=>updateSapHint(true));
+  const configuration=$('capture-field-sap_config_id');if(configuration)configuration.addEventListener('change',()=>updateSapHint(false));
+  for(const key of ['valor_referencia','valor_medido','tolerancia_pct'])$(`capture-field-${key}`)?.addEventListener('input',updateCalibrationHint);
   S.operation=newOperation();
 }
-function updateSapHint() {
-  const value=$('capture-field-sap')?.value.trim(); if(!value){$('sap-hint').classList.add('hidden');return;}
-  const item=S.sap.find((x)=>String(x.code)===value && x.active);
-  $('sap-hint').classList.remove('hidden');
-  if(!item){$('sap-hint').textContent='SAP aún no catalogado. Puedes conservar el código y completar los datos conocidos; la marca se selecciona por separado.';return;}
-  const voltage=$('capture-field-voltaje'),classification=$('capture-field-clasificacion');
-  if(voltage && !voltage.value) voltage.value=item.voltage;
-  if(classification && !classification.value) { const match=[...classification.options].find((o)=>o.value.toLowerCase()===String(item.classification).toLowerCase());if(match)classification.value=match.value; }
-  $('sap-hint').textContent=`SAP ${item.code}: ${item.voltage} · ${item.classification}. La marca es independiente. «Recuperado» no implica que el medidor esté apto para reutilizar.`;
+function setFieldValue(input,value) {
+  if(!input)return;
+  if(input.tagName==='SELECT' && value && ![...input.options].some((o)=>o.value===String(value))){const option=document.createElement('option');option.value=String(value);option.textContent=String(value);input.add(option);}
+  input.value=String(value ?? '');
+}
+function updateSapHint(reset=false) {
+  const value=$('capture-field-sap')?.value.trim(),hint=$('sap-hint'),select=$('capture-field-sap_config_id');
+  const classification=$('capture-field-clasificacion'),voltage=$('capture-field-voltaje'),sealing=$('capture-activity').value==='sellado';
+  if(!value){hint.classList.add('hidden');if(select)select.innerHTML=options([], '', 'Selecciona primero un SAP');if(sealing && classification)classification.value='';return;}
+  const item=S.sap.find((x)=>String(x.code)===value && x.active);hint.classList.remove('hidden');
+  if(!item){if(select)select.innerHTML=options([], '', 'SAP sin configurar');if(sealing && classification)classification.value='';hint.textContent='SAP aún no catalogado. Revisión técnica permite conservarlo como dato opcional. Configura el SAP para obtener la clasificación automática de sellado.';return;}
+  const configs=(item.configurations?.length?item.configurations:[{...item,id:''}]).filter((config)=>config.active!==false && config.active!==0);
+  const previous=reset?'':select?.value || '';
+  let config=configs.find((c)=>String(c.id)===String(previous) && previous!=='');
+  if(!config && configs.length===1)config=configs[0];
+  if(!config && !reset){const matching=configs.filter((c)=>(!voltage?.value || c.voltage===voltage.value) && (!classification?.value || c.classification===classification.value));if(matching.length===1)config=matching[0];}
+  if(select)select.innerHTML=options(configs.map((c)=>({value:c.id,label:[c.label,c.voltage,c.classification].filter(Boolean).join(' · ') || 'Configuración sin descripción'})),config?.id || previous,configs.length>1?'Selecciona la configuración':'Configuración automática');
+  if(config){setFieldValue(voltage,config.voltage || voltage?.value || '');setFieldValue(classification,config.classification || '');const brand=$('capture-field-marca'),model=$('capture-field-modelo');if(brand && !brand.value)brand.value=config.brand || '';if(model && !model.value)model.value=config.model || '';hint.innerHTML=`${signalBadge('verde','Configuración identificada')} <strong>SAP ${escapeHtml(value)}</strong><p>${escapeHtml([config.voltage,config.classification,config.label].filter(Boolean).join(' · '))}. Marca y modelo son independientes. Recuperado describe el origen del medidor.</p>`;}
+  else {if(sealing && classification)classification.value='';hint.innerHTML=`${signalBadge('amarillo','Selecciona una configuración')}<p>Este SAP admite ${fmt(configs.length)} configuraciones. Elige la correspondiente al medidor para determinar su clasificación.</p>`;}
+}
+function updateCalibrationHint() {
+  const reference=$('capture-field-valor_referencia'),measured=$('capture-field-valor_medido'),tolerance=$('capture-field-tolerancia_pct');
+  let result=$('capture-calibration-result');if(!reference || !measured)return;
+  if(!result){result=document.createElement('div');result.id='capture-calibration-result';result.className='notice full-width';result.setAttribute('role','status');$('capture-fields').append(result);}
+  if(reference.value==='' || measured.value===''){result.classList.add('hidden');return;}
+  const ref=Number(reference.value),value=Number(measured.value),limit=Number(tolerance?.value);
+  result.classList.remove('hidden');if(!Number.isFinite(ref) || !Number.isFinite(value) || ref===0){result.textContent='La referencia debe ser distinta de cero y las mediciones deben ser finitas.';return;}
+  const deviation=(value-ref)/Math.abs(ref)*100,hasTolerance=tolerance?.value!=='' && Number.isFinite(limit) && limit>=0;
+  result.innerHTML=`${signalBadge(hasTolerance && Math.abs(deviation)>limit?'rojo':hasTolerance?'verde':'amarillo',hasTolerance?(Math.abs(deviation)>limit?'Fuera de tolerancia':'Dentro de tolerancia'):'Tolerancia sin informar')}<p>Desviación: <strong>${fmt(deviation)} %</strong> · (medido − referencia) / |referencia| × 100. El sistema verificará el cálculo al guardar.</p>`;
 }
 function readFields(container) { const data={};container.querySelectorAll('[data-field]').forEach((input)=>{data[input.dataset.field]=input.type==='checkbox'?input.checked:input.type==='number'?(input.value===''?'':Number(input.value)):input.value.trim();});return data; }
 async function saveCapture(confirmed=false, payload=null) {
@@ -335,8 +431,53 @@ async function confirmImport() {
 }
 async function loadReceipts() {
   $('new-receipt').classList.toggle('hidden',!activeActivities().some((a)=>a.id==='recepcion'));
-  const data=await api(`/api/recepciones?${filterQuery()}`);
-  $('receipts-table').innerHTML=table(['Orden','SAP','Proceso','Recibido','Esperado','Pendiente','Estado'],(data.receipts || []).map((r)=>[escapeHtml(r.order),escapeHtml(r.sap),escapeHtml(r.process),fmt(r.received),r.expected===null || r.expected===undefined?'Por confirmar':fmt(r.expected),r.pending===null || r.pending===undefined?'Por confirmar':fmt(r.pending),badge(r.state || (r.pending===0?'Completa':'Pendiente'),r.pending===0?'good':'warn')]));
+  const query=new URLSearchParams(filterQuery());query.delete('desde');query.delete('hasta');
+  const data=await api(`/api/ordenes?${query}`);S.orders=data.orders || [];renderReceiptOrders();
+}
+function renderReceiptOrders() {
+  const orders=S.orders || [],scope=$('receipts-state').value;
+  $('receipts-metrics').innerHTML=metricCards([
+    ['Órdenes en seguimiento',orders.length,'Órdenes dentro del alcance seleccionado'],
+    ['Pendientes activos',orders.filter((o)=>o.state==='pendiente' || o.state==='por_confirmar').length,'Entregas aún por completar'],
+    ['Alertas',orders.filter((o)=>o.signal==='rojo' && o.state!=='cerrada').length,'Vencimiento o recepción en exceso'],
+    ['Lotes cerrados',orders.filter((o)=>o.state==='cerrada').length,'Con acta de cierre conservada']]);
+  const visible=orders.filter((o)=>scope==='all' || scope==='active' && o.state!=='cerrada' || scope==='overdue' && o.signal==='rojo' && o.state!=='cerrada' || scope==='closed' && o.state==='cerrada' || scope==='complete' && o.state==='completa');
+  $('receipts-table').innerHTML=table(['Proceso / orden','SAP','Recibido / esperado','Pendiente','Seguimiento','Entregas','Acciones'],visible.map((o)=>[
+    `<strong class="mono">${escapeHtml(o.process)}</strong><small>${escapeHtml(o.order_number)}</small>`,escapeHtml(o.sap),`${fmt(o.received)} / ${o.expected===null?'Por confirmar':fmt(o.expected)}${o.own_received===undefined?'':`<small>Tu aporte: ${fmt(o.own_received)}</small>`}`,
+    o.pending===null?'Por confirmar':`${fmt(o.pending)}${o.excess?`<small class="danger-text">Exceso: ${fmt(o.excess)}</small>`:''}`,
+    `${signalBadge(o.signal,orderStateLabel(o))}${o.due_date?`<small>Fecha límite: ${escapeHtml(prettyDate(o.due_date))}</small>`:''}`,fmt(o.deliveries),
+    `<button class="mini-button" data-order-detail="${o.id}">Ver detalle</button>${isManager() && o.state!=='cerrada'?`<button class="mini-button" data-order-edit="${o.id}">Editar orden</button>`:''}${o.state!=='cerrada' && activeActivities().some((a)=>a.id==='recepcion')?`<button class="mini-button" data-order-delivery="${o.id}">＋ Entrega</button>`:''}${isManager() && o.state==='completa' && !o.process_conflict && !o.excess?`<button class="mini-button" data-order-close="${o.id}">Cerrar lote</button>`:''}${isManager() && o.state==='cerrada'?`<button class="mini-button" data-order-reopen="${o.id}">Reabrir</button>`:''}`]),'No hay órdenes para este estado. Puedes crear una orden o registrar la primera entrega.');
+}
+function orderStateLabel(order) {return order.state==='cerrada'?'Cerrada':order.process_conflict?'Proceso duplicado: revisar':order.excess?'Exceso recibido':order.overdue?'Vencida':({completa:'Completa, lista para cerrar',pendiente:'Pendiente',por_confirmar:'Cantidad por confirmar'}[order.state] || order.state);}
+function createOrder() {
+  openDialog('Crear orden de recepción',`<form id="order-form" class="dialog-form"><div class="form-grid two"><label>Número de proceso único<input id="order-process" required maxlength="120" autocomplete="off"></label><label>Número de orden<input id="order-number" required maxlength="120"></label><label>Código SAP<input id="order-sap" required maxlength="60" list="sap-list"></label><label>Cantidad esperada<input id="order-expected" type="number" required min="1" max="1000000" step="1"></label><label>Fecha límite<input id="order-due" type="date"></label><label>Observaciones<textarea id="order-notes" maxlength="1500" rows="2"></textarea></label></div><div id="order-error" class="notice error hidden" role="alert"></div><div class="dialog-actions"><button id="order-cancel" type="button" class="btn secondary">Cancelar</button><button type="submit" class="btn primary">Crear orden</button></div></form>`,()=>{
+    $('order-cancel').onclick=closeDialog;$('order-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{await api('/api/ordenes',{process:$('order-process').value.trim(),order_number:$('order-number').value.trim(),sap:$('order-sap').value.trim(),expected:Number($('order-expected').value),due_date:$('order-due').value,notes:$('order-notes').value.trim()});closeDialog();toast('Orden creada. Cada entrega conservará su trazabilidad.');await loadReceipts();},$('order-error'));};
+  });
+}
+function editOrder(id) {
+  const order=(S.orders || []).find((o)=>String(o.id)===String(id));if(!order)return;
+  openDialog('Actualizar seguimiento de la orden',`<form id="order-edit-form" class="dialog-form"><p class="muted">Orden ${escapeHtml(order.order_number)} · SAP ${escapeHtml(order.sap)}. Las entregas y sus responsables se conservan.</p><div class="form-grid two"><label>Número de proceso único<input id="order-edit-process" required maxlength="160" value="${escapeHtml(order.process)}"></label><label>Cantidad esperada<input id="order-edit-expected" type="number" min="0" max="1000000" step="1" value="${order.expected===null?'':order.expected}"></label><label>Fecha límite<input id="order-edit-due" type="date" value="${escapeHtml(order.due_date || '')}"></label><label>Observaciones<textarea id="order-edit-notes" rows="2" maxlength="1500">${escapeHtml(order.notes || '')}</textarea></label></div><label>Motivo del cambio<textarea id="order-edit-reason" required minlength="3" maxlength="1500" rows="2"></textarea></label><div id="order-edit-error" class="notice error hidden" role="alert"></div><div class="dialog-actions"><button id="order-edit-cancel" class="btn secondary" type="button">Cancelar</button><button class="btn primary" type="submit">Guardar seguimiento</button></div></form>`,()=>{
+    $('order-edit-cancel').onclick=closeDialog;$('order-edit-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{await api('/api/ordenes',{id:order.id,process:$('order-edit-process').value.trim(),expected:$('order-edit-expected').value===''?null:Number($('order-edit-expected').value),due_date:$('order-edit-due').value,notes:$('order-edit-notes').value.trim(),reason:$('order-edit-reason').value.trim()});closeDialog();toast('Seguimiento actualizado con su motivo en auditoría.');await loadReceipts();},$('order-edit-error'));};
+  });
+}
+async function showOrderDetail(id) {
+  const data=await api(`/api/ordenes/${id}`),order=data.order;
+  openDialog(`Proceso ${order.process}`,`<div class="detail-title">${signalBadge(order.signal,orderStateLabel(order))}</div><dl class="detail-list"><dt>Orden</dt><dd>${escapeHtml(order.order_number)}</dd><dt>Código SAP</dt><dd>${escapeHtml(order.sap)}</dd><dt>Recibido / esperado</dt><dd>${fmt(order.received)} / ${order.expected===null?'Por confirmar':fmt(order.expected)}</dd><dt>Pendiente</dt><dd>${order.pending===null?'Por confirmar':fmt(order.pending)}</dd><dt>Fecha límite</dt><dd>${escapeHtml(prettyDate(order.due_date))}</dd><dt>Observaciones</dt><dd>${escapeHtml(order.notes || '—')}</dd></dl><h3>Entregas registradas</h3>${table(['Fecha','Cantidad','Responsable','Registrado por','Estado'],(data.deliveries || []).map((r)=>[escapeHtml(prettyDate(r.work_date)),fmt(r.quantity),escapeHtml(r.responsible_name || '—'),escapeHtml(r.recorded_by_name || '—'),badge(r.state==='anulado'?'Anulada':'Válida',r.state==='anulado'?'danger':'good')]),'La primera entrega aparecerá aquí.')}${data.certificates?.length?`<h3>Actas de cierre conservadas</h3>${table(['Acta / fecha','Estado','Huella SHA-256','Descargas'],data.certificates.map((c)=>[`${escapeHtml(c.number)}<small>${escapeHtml(prettyTime(c.created_at))}</small>`,badge(c.current?'Vigente':'Histórica',c.current?'good':'muted'),`<span class="hash-value">${escapeHtml(c.hash)}</span>`,`<a class="btn small secondary" href="/api/ordenes/${order.id}/acta.pdf?certificate_id=${encodeURIComponent(c.id)}">PDF</a> <a class="btn small secondary" href="/api/ordenes/${order.id}/acta.json?certificate_id=${encodeURIComponent(c.id)}">JSON</a>`]))}`:''}<div class="dialog-actions">${order.state==='cerrada'?`<a href="/api/ordenes/${order.id}/acta.pdf" class="btn primary">Descargar acta PDF</a><button class="btn secondary" data-order-certificate="${order.id}">Ver sello del acta</button>`:`${activeActivities().some((a)=>a.id==='recepcion')?`<button class="btn secondary" data-order-delivery="${order.id}">Registrar entrega</button>`:''}${isManager() && order.state==='completa' && !order.process_conflict && !order.excess?`<button class="btn primary" data-order-close="${order.id}">Cerrar lote</button>`:''}`}</div>`);
+}
+async function registerOrderDelivery(id) {
+  const order=(S.orders || []).find((o)=>String(o.id)===String(id)) || (await api(`/api/ordenes/${id}`)).order;
+  closeDialog();await navigate('capture');$('capture-activity').value='recepcion';renderCaptureFields();
+  for(const [key,value] of Object.entries({numero_orden:order.order_number,proceso:order.process,sap:order.sap,cantidad_esperada:order.expected ?? ''}))setFieldValue($(`capture-field-${key}`),value);
+  $('capture-quantity').value=String(order.pending>0?order.pending:1);updateSapHint(true);$('capture-quantity').focus();
+}
+function changeOrderState(id,reopen=false) {
+  openDialog(reopen?'Reabrir lote':'Cerrar y certificar lote',`<form id="order-state-form" class="dialog-form"><p>${reopen?'Se conservará el acta anterior y quedará registrado el motivo de reapertura.':'El sistema comprobará que lo recibido coincide con lo esperado y conservará un acta con su huella SHA-256.'}</p><label>Motivo<textarea id="order-state-reason" rows="3" maxlength="1500" ${reopen?'required minlength="3"':''}></textarea></label><div id="order-state-error" class="notice error hidden" role="alert"></div><div class="dialog-actions"><button id="order-state-cancel" type="button" class="btn secondary">Cancelar</button><button class="btn primary" type="submit">${reopen?'Reabrir lote':'Cerrar y generar acta'}</button></div></form>`,()=>{
+    $('order-state-cancel').onclick=closeDialog;$('order-state-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{await api(`/api/ordenes/${id}/${reopen?'reabrir':'cerrar'}`,{reason:$('order-state-reason').value.trim()});closeDialog();toast(reopen?'Lote reabierto con trazabilidad.':'Lote cerrado; el acta está disponible.');await loadReceipts();await showOrderDetail(id);},$('order-state-error'));};
+  });
+}
+async function showOrderCertificate(id) {
+  const data=await api(`/api/ordenes/${id}/acta`),certificate=data.certificate;
+  openDialog('Sello del acta de cierre',`<dl class="detail-list"><dt>Acta</dt><dd>${escapeHtml(certificate.number)}</dd><dt>Emitida</dt><dd>${escapeHtml(prettyTime(certificate.created_at))}</dd><dt>Huella SHA-256</dt><dd class="hash-value">${escapeHtml(certificate.hash)}</dd></dl><p class="muted">La huella corresponde a los datos conservados al cerrar el lote. No equivale a una firma digital institucional.</p><a href="/api/ordenes/${id}/acta.pdf" class="btn primary">Descargar acta PDF</a>`);
 }
 function renderGoals(goals, compact=false) { const list=compact?goals.slice(0,5):goals;return table(['Colaborador','Actividad','Período','Producción / meta','Avance','Estado'],list.map((g)=>[escapeHtml(g.responsible_name || 'Equipo'),`<strong>${escapeHtml(g.activity_name)}</strong><small>${escapeHtml(g.unit)}</small>`,`${escapeHtml(prettyDate(g.start_date))}<small>${escapeHtml(prettyDate(g.end_date))}</small>`,`${fmt(g.produced)} / ${fmt(g.target)}`,progress(g.pct),badge(String(g.state || '').replaceAll('_',' '),g.pct>=100?'good':g.state==='vencida'?'danger':'soft')]),'Las metas aparecerán cuando el supervisor las asigne.'); }
 async function loadGoals() { const data=await api('/api/metas');$('goals-table').innerHTML=renderGoals(data.goals || []);$('goals-hint').textContent=isManager()?'Cada avance corresponde a una actividad y unidad.':'Aquí encontrarás las metas asignadas a tu cuenta.';if(!$('goal-from').value)$('goal-from').value=today();if(!$('goal-to').value)$('goal-to').value=today();updateGoalUnit(); }
@@ -351,9 +492,24 @@ function editUser(user=null) {
     $('user-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{const assigned=[...document.querySelectorAll('[data-user-activity]:checked')].map((n)=>n.dataset.userActivity);const payload={name:$('user-name').value.trim(),active:$('user-active').checked,activity_ids:assigned};if(user)await api(`/api/usuarios/${user.id}/actualizar`,payload);else {payload.username=$('user-username').value.trim();payload.role=$('user-role').value;if(payload.role!=='tecnico')payload.password=$('user-password').value;await api('/api/usuarios',payload);}await loadReferences();closeDialog();toast(user?'Colaborador actualizado.':'Acceso creado.');await loadUsers();},$('user-error'));};
   });
 }
-async function loadCatalogs() {renderCatalogValues();$('sap-table').innerHTML=table(['SAP','Voltaje','Clasificación','Estado','Acción'],S.sap.map((s)=>[escapeHtml(s.code),escapeHtml(s.voltage),escapeHtml(s.classification),badge(s.active?'Activo':'Inactivo',s.active?'good':'muted'),`<button class="mini-button" data-edit-sap="${escapeHtml(s.code)}">Editar</button><button class="mini-button" data-toggle-sap="${escapeHtml(s.code)}">${s.active?'Desactivar':'Activar'}</button>`]));}
+async function loadCatalogs() {
+  renderCatalogValues();const configs=S.sap.flatMap((item)=>(item.configurations?.length?item.configurations:[{...item,id:''}]).map((config)=>({...config,code:item.code,code_active:item.active})));
+  $('sap-table').innerHTML=table(['SAP / configuración','Voltaje','Clasificación','Marca / modelo','Estado','Acción'],configs.map((c)=>[`${escapeHtml(c.code)}<small>${escapeHtml(c.label || 'Principal')}</small>`,escapeHtml(c.voltage || '—'),escapeHtml(c.classification || '—'),`${escapeHtml(c.brand || 'Independiente')}<small>${escapeHtml(c.model || '')}</small>`,badge(c.active && c.code_active?'Activa':'Inactiva',c.active && c.code_active?'good':'muted'),`<button class="mini-button" data-edit-sap="${escapeHtml(c.code)}" data-sap-config="${escapeHtml(c.id)}">Editar</button>`]));
+}
+function selectSapConfiguration(code,configurationId=null) {
+  const item=S.sap.find((c)=>c.code===code),select=$('sap-configuration');
+  const previous=configurationId!==null?String(configurationId):select.value;
+  select.innerHTML=options([{value:'',label:'Configuración principal'},...(item?.configurations || []).map((c)=>({value:c.id,label:[c.label,c.voltage,c.classification].filter(Boolean).join(' · ')})),{value:'new',label:'＋ Nueva configuración'}],previous,null);
+  const config=previous==='new'?null:(item?.configurations || []).find((c)=>String(c.id)===previous) || (previous===''?item:null);
+  if(config){$('sap-voltage').value=config.voltage || '';$('sap-classification').value=config.classification || '';$('sap-brand').value=config.brand || '';$('sap-model').value=config.model || '';$('sap-label').value=config.label || '';$('sap-active').checked=Boolean(config.active);}
+  else if(previous==='new'){for(const id of ['sap-voltage','sap-classification','sap-brand','sap-model','sap-label'])$(id).value='';$('sap-active').checked=true;}
+}
 function renderCatalogValues() { const kind=$('catalog-kind').value; $('catalog-values').innerHTML=(S.catalog[kind] || []).map((v)=>`<span class="field-pill">${escapeHtml(v)}</span>`).join(''); }
-async function loadAudit() {const data=await api('/api/auditoria');S.audit=data.entries || [];$('audit-table').innerHTML=table(['Fecha','Persona','Operación','Referencia','Motivo','Detalle'],S.audit.map((a)=>[escapeHtml(prettyTime(a.created_at)),escapeHtml(a.actor_name || 'Sistema'),escapeHtml(a.action),`${escapeHtml(a.entity)} #${escapeHtml(a.entity_id)}`,escapeHtml(a.reason || '—'),`<button class="mini-button" data-audit="${a.id}">Ver cambio</button>`]));}
+async function loadAudit() {
+  const [data,integrity]=await Promise.all([api('/api/auditoria'),api('/api/auditoria/integridad')]);S.audit=data.entries || [];
+  $('audit-integrity').className=`notice ${integrity.ok?'success':'error'}`;$('audit-integrity').innerHTML=`${signalBadge(integrity.ok?'verde':'rojo',integrity.ok?'Cadena de auditoría íntegra':'Revisar integridad de auditoría')}<p>${fmt(integrity.entries)} entradas verificadas. Las entradas de auditoría no admiten edición ni eliminación.${integrity.invalid_id?` Primera incidencia: ${escapeHtml(integrity.invalid_id)}.`:''}</p><small class="hash-value">Huella: ${escapeHtml(integrity.head_hash || 'Sin entradas')}</small>`;
+  $('audit-table').innerHTML=table(['Fecha','Persona','Operación','Referencia','Motivo','Detalle'],S.audit.map((a)=>[escapeHtml(prettyTime(a.created_at)),escapeHtml(a.actor_name || 'Sistema'),escapeHtml(a.action),`${escapeHtml(a.entity)} #${escapeHtml(a.entity_id)}`,escapeHtml(a.reason || '—'),`<button class="mini-button" data-audit="${a.id}">Ver cambio</button>`]));
+}
 function auditValues(value) { if(!value || typeof value!=='object')return `<p class="muted">${escapeHtml(value ?? 'Sin datos anteriores')}</p>`;const entries=Object.entries(value).filter(([key])=>!/password|hash|salt|csrf|token/i.test(key));return `<dl class="detail-list">${entries.map(([key,val])=>`<dt>${escapeHtml(labels[key] || key)}</dt><dd>${val && typeof val==='object'?Array.isArray(val)?escapeHtml(val.map((x)=>typeof x==='object'?(x.label || x.name || 'Elemento'):x).join(', ')):auditValues(val):escapeHtml(val===true?'Sí':val===false?'No':val ?? '—')}</dd>`).join('')}</dl>`; }
 async function loadAccount() {
   const sharedPublicAccess=S.publicDemo && ['visitante_demo','90001','90002'].includes(S.user.username);
@@ -365,7 +521,7 @@ async function loadAccount() {
 }
 
 function bindEvents() {
-  let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(S.view==='dashboard' && S.user)Object.entries(S.charts).forEach(([key,chart])=>svgChart(`chart-${key}`,chart.data,chart.title,chart.unit));},180);});
+  let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(!S.user)return;if(S.view==='comparison' && S.comparison)comparisonChart(S.comparison);else if(['dashboard','quality'].includes(S.view)){const keys=S.view==='dashboard'?['activity','day','voltage','collaborator']:['quality-results','quality-failures'];for(const key of keys){const chart=S.charts[key];if(chart)svgChart(`chart-${key}`,chart.data,chart.title,chart.unit);}}},180);});
   document.addEventListener('click',(event)=>{
     const view=event.target.closest('[data-view]');if(view)navigate(view.dataset.view);
     const chart=event.target.closest('[data-export-chart]');if(chart)exportChart(chart.dataset.exportChart,chart.dataset.format,chart);
@@ -374,15 +530,20 @@ function bindEvents() {
     const reset=event.target.closest('[data-reset-user]');if(reset){const user=S.users.find((u)=>String(u.id)===reset.dataset.resetUser);confirmDialog('Restablecer acceso',`${user.name} volverá a acceder con su código como usuario y contraseña. Sus sesiones se cerrarán y su historial se conservará.`,async()=>{await api(`/api/usuarios/${user.id}/restablecer`,{});toast('Acceso restablecido al código de empleado.');},'Restablecer acceso');}
     const rec=event.target.closest('[data-event]');if(rec){const r=S.records.find((x)=>String(x.id)===rec.dataset.event);if(!r)return;if(rec.dataset.action==='detail')openDialog('Detalle del registro',detailHtml(r));if(rec.dataset.action==='edit')editRecord(r);if(rec.dataset.action==='void')changeRecordState(r,false);if(rec.dataset.action==='restore')changeRecordState(r,true);}
     const audit=event.target.closest('[data-audit]');if(audit){const a=S.audit.find((x)=>String(x.id)===audit.dataset.audit);if(a)openDialog('Detalle del cambio',`<p>${escapeHtml(a.actor_name || 'Sistema')} · ${escapeHtml(prettyTime(a.created_at))}</p><p>${escapeHtml(a.reason || '')}</p><h3>Antes</h3>${auditValues(a.before)}<h3>Después</h3>${auditValues(a.after)}`);}
-    const sapEdit=event.target.closest('[data-edit-sap]');if(sapEdit){const item=S.sap.find((s)=>s.code===sapEdit.dataset.editSap);$('sap-code').value=item.code;$('sap-voltage').value=item.voltage;$('sap-classification').value=item.classification;$('sap-code').focus();}
-    const sapToggle=event.target.closest('[data-toggle-sap]');if(sapToggle){const item=S.sap.find((s)=>s.code===sapToggle.dataset.toggleSap);busy(sapToggle,async()=>{await api('/api/sap',{...item,active:!item.active});await loadReferences();await loadCatalogs();toast(item.active?'SAP desactivado; su histórico se conserva.':'SAP habilitado.');});}
+    const sapEdit=event.target.closest('[data-edit-sap]');if(sapEdit){$('sap-code').value=sapEdit.dataset.editSap;selectSapConfiguration(sapEdit.dataset.editSap,sapEdit.dataset.sapConfig);$('sap-code').focus();}
+    const orderEdit=event.target.closest('[data-order-edit]');if(orderEdit)editOrder(orderEdit.dataset.orderEdit);
+    const orderDetail=event.target.closest('[data-order-detail]');if(orderDetail)busy(orderDetail,()=>showOrderDetail(orderDetail.dataset.orderDetail));
+    const orderDelivery=event.target.closest('[data-order-delivery]');if(orderDelivery)busy(orderDelivery,()=>registerOrderDelivery(orderDelivery.dataset.orderDelivery));
+    const orderClose=event.target.closest('[data-order-close]');if(orderClose)changeOrderState(orderClose.dataset.orderClose,false);
+    const orderReopen=event.target.closest('[data-order-reopen]');if(orderReopen)changeOrderState(orderReopen.dataset.orderReopen,true);
+    const orderCertificate=event.target.closest('[data-order-certificate]');if(orderCertificate)busy(orderCertificate,()=>showOrderCertificate(orderCertificate.dataset.orderCertificate));
   });
   $('auth-form').onsubmit=(event)=>{event.preventDefault();busy($('auth-submit'),async()=>{const credentials={username:$('auth-username').value.trim(),password:$('auth-password').value};if(S.setup){await api('/api/setup',{...credentials,name:$('auth-name').value.trim()});S.setup=false;}await api('/api/login',credentials);$('auth-password').value='';await enterApp(await api('/api/me'));},$('auth-error'));};
   $('logout-button').onclick=()=>busy($('logout-button'),async()=>{await api('/api/logout',{});S.user=null;S.csrf='';$('password-form').reset();showAuth(false);});
   $('menu-toggle').onclick=()=>setMenu(!document.body.classList.contains('menu-open'));$('sidebar-backdrop').onclick=()=>setMenu(false);$('account-shortcut').onclick=()=>navigate('account');$('quick-capture').onclick=()=>navigate('capture');
   $('dialog-close').onclick=closeDialog;$('app-dialog').addEventListener('click',(e)=>{if(e.target===$('app-dialog')){const r=$('app-dialog').getBoundingClientRect();if(e.clientX<r.left || e.clientX>r.right || e.clientY<r.top || e.clientY>r.bottom)closeDialog();}});
   $('toggle-filters').onclick=()=>{const collapsed=$('global-filters').classList.toggle('filter-collapsed');$('toggle-filters').setAttribute('aria-expanded',String(!collapsed));};
-  $('filter-form').onsubmit=(event)=>{event.preventDefault();if($('filter-from').value && $('filter-to').value && $('filter-from').value>$('filter-to').value)return toast('La fecha inicial debe ser anterior a la final.','warning');S.page=1;navigate(S.view);};
+  $('filter-form').onsubmit=(event)=>{event.preventDefault();if(!['comparison','receipts'].includes(S.view) && $('filter-from').value && $('filter-to').value && $('filter-from').value>$('filter-to').value)return toast('La fecha inicial debe ser anterior a la final.','warning');S.page=1;navigate(S.view);};
   $('clear-filters').onclick=()=>{$('filter-form').reset();S.page=1;navigate(S.view);};
   $('capture-activity').onchange=()=>{renderCaptureFields();storePin();};$('pin-activity').onchange=storePin;
   $('capture-form').onsubmit=(event)=>{event.preventDefault();busy($('capture-submit'),()=>saveCapture(),$('capture-error'));};
@@ -390,14 +551,20 @@ function bindEvents() {
   $('history-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,searchHistory);};$('new-activity').onclick=()=>editActivity();$('new-user').onclick=()=>editUser();
   $('create-backup').onclick=()=>busy($('create-backup'),async()=>{const result=await api('/api/backup',{});toast(`Respaldo creado. ${result.message || 'Se guardó en la carpeta de respaldos de esta instalación.'}`);});
   $('import-activity').onchange=updateTemplateLinks;$('import-file').onchange=()=>{S.preview=null;$('import-preview').classList.add('hidden');};$('import-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,previewImport,$('import-error'));};
+  $('create-order').onclick=createOrder;$('receipts-state').onchange=renderReceiptOrders;
+  $('quality-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,loadQuality);};
+  $('comparison-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,loadComparison,$('comparison-error'));};
   $('new-receipt').onclick=async()=>{await navigate('capture');$('capture-activity').value='recepcion';renderCaptureFields();};
   $('goal-activity').onchange=updateGoalUnit;$('goal-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{const payload={responsible_id:Number($('goal-responsible').value),activity_id:$('goal-activity').value,start_date:$('goal-from').value,end_date:$('goal-to').value,target:Number($('goal-target').value)};if(payload.activity_id==='asignacion')payload.unit=$('goal-unit').value;await api('/api/metas',payload);toast('Meta asignada.');$('goal-target').value='';await loadGoals();});};
-  $('sap-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{await api('/api/sap',{code:$('sap-code').value.trim(),voltage:$('sap-voltage').value,classification:$('sap-classification').value,active:true});$('sap-code').value='';await loadReferences();await loadCatalogs();toast('Código SAP guardado. La marca sigue siendo independiente.');});};
+  $('sap-code').onchange=()=>selectSapConfiguration($('sap-code').value.trim(),'');$('sap-configuration').onchange=()=>selectSapConfiguration($('sap-code').value.trim());
+  $('sap-clear').onclick=()=>{$('sap-form').reset();selectSapConfiguration('','');};
+  $('sap-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{const payload={code:$('sap-code').value.trim(),voltage:$('sap-voltage').value.trim(),classification:$('sap-classification').value.trim(),brand:$('sap-brand').value.trim(),model:$('sap-model').value.trim(),label:$('sap-label').value.trim(),active:$('sap-active').checked};if($('sap-configuration').value)payload.configuration_id=$('sap-configuration').value;await api('/api/sap',payload);await loadReferences();await loadCatalogs();toast('Configuración SAP guardada. El histórico se conserva.');},$('page-error'));};
   $('catalog-kind').onchange=renderCatalogValues;$('catalog-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{await api('/api/catalogos',{kind:$('catalog-kind').value,label:$('catalog-label').value.trim()});$('catalog-label').value='';await loadReferences();await loadCatalogs();toast('Opción agregada al catálogo.');});};
   $('password-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,async()=>{if($('password-new').value!==$('password-confirm').value)throw new Error('Las contraseñas nuevas no coinciden.');const data=await api('/api/password',{current_password:$('password-current').value,password:$('password-new').value});$('password-form').reset();if(data.relogin){S.user=null;S.csrf='';showAuth(false);toast('Contraseña actualizada. Entra de nuevo con tu nueva clave.');}else toast('Contraseña actualizada.');});};
 }
 async function init() {
   bindEvents();const day=today();$('filter-from').value=`${day.slice(0,7)}-01`;$('filter-to').value=day;$('capture-date').value=day;
+  setComparisonDefaults();
   if(window.matchMedia('(max-width:760px)').matches){$('global-filters').classList.add('filter-collapsed');$('toggle-filters').setAttribute('aria-expanded','false');}
   try {const me=await api('/api/me');S.demo=Boolean(me.demo);S.publicDemo=Boolean(me.public_demo);S.setup=Boolean(me.setup_required);if(me.logged)await enterApp(me);else showAuth();}
   catch(error){showAuth(false);showError($('auth-error'),error);}

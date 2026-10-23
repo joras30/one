@@ -2,9 +2,19 @@
 
 ## Entrega actual
 
-Versión 1.0 de pruebas locales, ampliada desde el prototipo Python/SQLite.
+Versión 2.0 de pruebas controladas, requisitos V6, ampliada desde el prototipo Python/SQLite.
 Python >= 3.11, biblioteca estándar, sin instalación de paquetes para ejecutar.
-Interfaz en español para PC y móvil. Escucha exclusiva en loopback.
+Interfaz industrial oscura en español para PC y móvil. Loopback por defecto;
+modo LAN explícito con `--lan-ip` privada y SQLite en el disco de la PC principal.
+
+La entrega V6 incorpora configuraciones SAP múltiples por código, marca/modelo
+independientes, clasificación automática del sellado, órdenes de recepción con
+proceso único, entregas sucesivas, pendientes y seguimiento, cierre con acta
+inmutable PDF/JSON y reapertura motivada. Las actas anteriores siguen consultables.
+Incluye inspección/calibración con error porcentual calculado, tasas de calidad,
+comparativas A/B por actividad y unidad en cuatro granularidades y Excel/PDF.
+La auditoría encadena SHA-256 y bloquea actualización, borrado y reemplazo SQL.
+Las versiones históricas de formularios, los registros y las claves se conservan.
 
 Entrega 1.0.1: iniciadores Windows con comprobación de archivos del paquete,
 instrucciones de extracción completa y mensajes separados para archivos ausentes,
@@ -19,15 +29,18 @@ Se conservan usuarios, contraseñas, registros y esquema de datos.
 Presupuesto exigido: costo cero. Se retiró render.yaml y la propuesta de plan de
 pago. Se implementó la demo estática completa para GitHub Pages con Python/WebAssembly,
 SQLite persistida en IndexedDB por navegador y respaldo/restauración descargables.
-Esta demo individual no equivale a una base central compartida. La conexión a
-una base gratuita de servidor queda pendiente de proyecto, migraciones y permisos.
+Esta demo individual de Internet no equivale a una base central compartida.
+Para una base compartida entre equipos ya está implementado el servidor LAN,
+documentado en `deploy/RED_LOCAL.md`, sin contratar servicios. La sincronización
+por Internet mediante una base central externa sigue siendo una fase posterior.
 
-La distribución está publicada en la rama `gh-pages` (30 archivos, 14.225.372 bytes,
-sin bases SQLite). Falta seleccionar en **Settings → Pages**:
-**Deploy from a branch → gh-pages → /(root) → Save** y comprobar el sitio resultante.
-Las siguientes entregas actualizan el contenido compilado de esa rama; los
-visitantes recargan el mismo enlace. El workflow **Construir demo gratuita**
-verifica y guarda el artefacto de `demo-web`, sin permisos ni trabajo de despliegue.
+GitHub confirmó la publicación inicial del enlace https://joras30.github.io/one/
+en la ejecución 39851621070, con construcción y despliegue correctos. La
+distribución de V6 conserva IndexedDB y se actualiza en `gh-pages`. El workflow
+**Construir demo gratuita** consulta el modo configurado: despliega si Pages usa
+Actions; si usa una rama, Pages publica los cambios de esa rama. El entorno de
+desarrollo bloquea el acceso directo a github.io; la publicación se verifica por
+los resultados y el enlace que emite GitHub, además de probar la distribución local.
 
 ## Funcionalidades terminadas
 
@@ -58,7 +71,7 @@ Se conservan tablas y registros originales, IDs, fechas, revisiones y verificado
 de contraseña. Las filas antiguas se incorporan por legacy_id y se reconcilian
 inserciones tardías sin sobrescribir correcciones o eventos nuevos. El servidor
 reserva el puerto antes de migrar para impedir un cambio de base cuando una
-instancia anterior ocupa ese puerto. Esquema actual: 3.
+instancia anterior ocupa ese puerto. Esquema actual: 4.
 
 La primera cuenta supervisora de una instalación antigua conserva su capacidad
 administrativa mediante access_role, sin modificar el rol legado ni su clave.
@@ -69,11 +82,31 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
 - APLICACION_ACTUAL/app.py: HTTP, autenticación, usuarios, respaldo, CLI y demo.
 - APLICACION_ACTUAL/production.py: actividades, eventos, métricas e importaciones.
 - APLICACION_ACTUAL/documents.py: intercambio de archivos, sin dependencias externas.
+- APLICACION_ACTUAL/operational.py: configuraciones SAP, órdenes, actas y cadena de auditoría.
+- APLICACION_ACTUAL/analytics.py: calidad, calibraciones y comparativas por período.
 - APLICACION_ACTUAL/static/: interfaz adaptable y gráficos exportables.
 - APLICACION_ACTUAL/tests/test_application.py: integración HTTP y migración.
 - tests/test_documents.py: archivos, límites y formatos de intercambio.
 
 ## Validación
+
+- V6: **125 pruebas automatizadas correctas**: 69 de HTTP, permisos, migración,
+  acceso LAN y perfil HTTPS; 56 de documentos, analítica y dominio.
+- V6: **48 comprobaciones de navegador** en PC y móvil: SAP múltiple, sellado,
+  importación, calibración, tasas, cuatro granularidades, órdenes, cierre,
+  reapertura, acta PDF y huella, descargas, auditoría y alcance de cada rol.
+- La distribución V6 de Pages pasó las 19 comprobaciones de persistencia,
+  descargas, concurrencia entre pestañas y respaldo/restauración bajo una subruta.
+- Actualización real de IndexedDB V3 a V4: **33 comprobaciones correctas**.
+  Se conservaron las 63 filas históricas completas, sus versiones de formulario
+  y todas las filas de usuarios, incluidos roles y verificadores de contraseña.
+  Se comprobaron nuevas capturas, filtro Modelo, gráficos SVG/PNG, dos cierres,
+  actas históricas PDF/JSON, recarga, integridad SQLite y ausencia de errores JS.
+- Regresiones V6: correcciones de entregas tras modificar el maestro, anulados
+  en migración, conflicto de procesos históricos, saldos al corte, cálculos no
+  finitos, formularios históricos ampliados y reemplazos SQL bloqueados.
+
+Las siguientes comprobaciones corresponden a las entregas anteriores conservadas:
 
 - 50 pruebas HTTP/migración/web correctas, incluidas seis actividades, permisos,
   reintentos concurrentes, campos históricos, respaldos restaurables y puerto ocupado.
@@ -107,13 +140,18 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
 
 Ejecutado en Linux, Python 3.12 y Chromium. No se ha ejecutado en Windows,
 Python 3.15, Safari ni dispositivos físicos. La adaptación visual móvil está
-comprobada en navegador emulado, sin afirmar un despliegue de red.
+comprobada en navegador emulado; no equivale a una prueba física de la red de oficina.
 
 ## Límites y trabajo posterior
 
-- Iniciadores locales, perfil HTTPS propio y demo individual gratuita separados.
-  GitHub Pages requiere activar **Deploy from a branch**, rama **gh-pages**,
-  carpeta **/(root)** y guardar en los ajustes del repositorio.
+- Iniciadores locales, servidor LAN, perfil HTTPS propio y demo individual
+  gratuita separados. La IP y la conectividad física de oficina las configura
+  el usuario con su red autorizada; las pruebas de servidor usan loopback.
+- Cada proceso de recepción identifica una orden de un SAP. Las entregas de
+  ese proceso pueden ser sucesivas. Un material distinto requiere otro proceso.
+- El acta verifica un cierre interno mediante su huella; no es una firma
+  digital institucional. La auditoría append-only no sustituye permisos del
+  sistema operativo ni un respaldo externo frente al dueño del archivo SQLite.
 - Catálogo SAP completo pendiente del usuario; solo se precargó el ejemplo confirmado.
 - Importación hasta 8 MB/5.000 filas y exportación hasta 10.000 filas por archivo,
   con rechazo explícito si se supera; no se truncan resultados silenciosamente.
