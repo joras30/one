@@ -90,7 +90,7 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
 
 ## Validación
 
-- V6: **125 pruebas automatizadas correctas**: 69 de HTTP, permisos, migración,
+- V6: **130 pruebas automatizadas correctas**: 74 de HTTP, permisos, migración,
   acceso LAN y perfil HTTPS; 56 de documentos, analítica y dominio.
 - V6: **48 comprobaciones de navegador** en PC y móvil: SAP múltiple, sellado,
   importación, calibración, tasas, cuatro granularidades, órdenes, cierre,
