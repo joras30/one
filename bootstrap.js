@@ -1,6 +1,12 @@
 // bootstrap.js
 var baseUrl = new URL("./", document.baseURI).href;
-var worker = new Worker(new URL("worker.js", baseUrl), { type: "module" });
+var buildVersion = new URL(import.meta.url).searchParams.get("v") || "";
+var versionedUrl = (name) => {
+  const url = new URL(name, baseUrl);
+  if (buildVersion) url.searchParams.set("v", buildVersion);
+  return url;
+};
+var worker = new Worker(versionedUrl("worker.js"), { type: "module" });
 var pending = /* @__PURE__ */ new Map();
 var sequence = 0;
 var loader = document.getElementById("demo-loader");
@@ -104,7 +110,7 @@ try {
   await rpc({ type: "init", baseUrl });
   loader.remove();
   const script = document.createElement("script");
-  script.src = new URL("app.js", baseUrl);
+  script.src = versionedUrl("app.js");
   document.body.append(script);
 } catch (error) {
   status.textContent = error.message;

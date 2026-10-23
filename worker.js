@@ -599,6 +599,7 @@ globalThis.browserPbkdf2 = (password, salt, rounds) => bytesToHex(
   pbkdf2(sha256, utf8ToBytes(password), hexToBytes(salt), { c: rounds, dkLen: 32 })
 );
 var DATABASE = "laboratorio-medidas-demo-v1";
+var buildVersion = new URL(import.meta.url).searchParams.get("v") || "";
 var py;
 var database;
 var cookie = "";
@@ -669,7 +670,9 @@ async function initialise(baseUrl) {
   py.FS.mkdirTree("/demo-data");
   const files = ["app.py", "production.py", "documents.py", "operational.py", "analytics.py", "catalogos.json", "bridge.py"];
   await Promise.all(files.map(async (name) => {
-    const response = await fetch(new URL("engine/" + name, baseUrl));
+    const url = new URL("engine/" + name, baseUrl);
+    if (buildVersion) url.searchParams.set("v", buildVersion);
+    const response = await fetch(url);
     if (!response.ok) throw new Error("Falta un archivo de la demo. Actualiza la p\xE1gina.");
     py.FS.writeFile("/app/" + name, new Uint8Array(await response.arrayBuffer()));
   }));
