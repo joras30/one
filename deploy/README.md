@@ -52,7 +52,9 @@ confirma en el almacenamiento persistente y conserva la versión anterior.
 ## Actualizaciones sin descargar ZIP
 
 Los commits en `demo-web` ejecutan **Actions → Construir demo gratuita**
-(`.github/workflows/pages.yml`): instala las dependencias fijadas, construye y
+(`.github/workflows/pages.yml`): primero comprueba la aplicación en Linux/Python
+3.12 y Windows/Python 3.15 con datos ficticios. Solo si pasan ambas plataformas,
+instala las dependencias fijadas, construye y
 verifica la distribución y guarda el artefacto `demo-github-pages` durante un día.
 El workflow consulta el modo que ya esté configurado en Pages. Cuando es
 **GitHub Actions**, publica ese mismo artefacto automáticamente. Cuando es

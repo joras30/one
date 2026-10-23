@@ -9,7 +9,30 @@ concurrency:
   group: construir-demo-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  test:
+    name: Pruebas ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.12'
+          - os: windows-latest
+            python: '3.15'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Lector independiente para comprobar archivos Excel
+        run: python -m pip install --disable-pip-version-check openpyxl==3.1.5 et-xmlfile==2.0.0
+      - name: HTTP, migraciones, permisos y red local
+        run: python -m unittest discover -s APLICACION_ACTUAL/tests -v
+      - name: Dominio, calidad, comparativas y documentos
+        run: python -m unittest discover -s tests -v
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
