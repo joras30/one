@@ -64,6 +64,7 @@ corresponden a ubicaciones físicas diferentes; los identificadores de volumen n
 permiten demostrar por sí solos cómo está construido el almacenamiento físico.
 
 La copia programada se ejecuta mientras la PC y la aplicación están encendidas.
+Si la PC estaba apagada a la hora programada, el sistema recupera la copia pendiente al volver a iniciar la aplicación.
 Cada copia utiliza un snapshot consistente de SQLite y compara su SHA-256. Si un
 destino falla se conserva la copia local, se intenta el otro y se informa
 **Incompleto**. No se declara éxito de dos copias si falta una. Los fallos se

@@ -996,7 +996,10 @@ class MigrationTests(HTTPFixture, unittest.TestCase):
                 "--port", str(occupied.getsockname()[1]), "--no-browser",
             ], capture_output=True, timeout=15, cwd=APP_ROOT)
         self.assertNotEqual(result.returncode, 0, "A second process started on an occupied port")
-        message = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+        # The child's console encoding is platform dependent (Windows uses
+        # its active code page); decode using that same locale.
+        import locale
+        message = (result.stdout + result.stderr).decode(locale.getpreferredencoding(False), errors="replace")
         self.assertRegex(message, r"El puerto \d+ ya está en uso")
         self.assertEqual(hashlib.sha256(untouched.read_bytes()).digest(), original_digest,
                          "A failed startup modified the selected database before obtaining its port")

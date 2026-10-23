@@ -359,9 +359,13 @@ class BackupScheduler:
         with self.app.database() as db:
             cfg = backup_settings(db)
             last = db.execute("SELECT started_at FROM backup_runs WHERE status='correcto' AND source='automatico' ORDER BY id DESC LIMIT 1").fetchone()
-        if len(cfg['targets']) != 2 or current.strftime('%H:%M') < cfg['daily_time']:
+        if len(cfg['targets']) != 2:
             return None
-        if last and datetime.fromisoformat(last[0].replace('Z', '+00:00')).astimezone(ZONE).date() == current.date():
+        hour, minute = map(int, cfg['daily_time'].split(':'))
+        due = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if current < due:
+            due -= timedelta(days=1)
+        if last and datetime.fromisoformat(last[0].replace('Z', '+00:00')).astimezone(ZONE) >= due:
             return None
         if self.last_attempt and time.monotonic() - self.last_attempt < 300:
             return None

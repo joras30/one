@@ -9,6 +9,9 @@ def annotation(text):
 
 
 def main():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='backslashreplace')
     root = Path(__file__).resolve().parents[1]
     suites = {'http': root / 'APLICACION_ACTUAL/tests', 'domain': root / 'tests'}
     if len(sys.argv) != 2 or sys.argv[1] not in suites:

@@ -18,7 +18,7 @@ import production as p
 class FoundationTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='laboratorio-base-v33-');self.addCleanup(self.temp.cleanup)
-        self.root=Path(self.temp.name);app.configure(self.root/'principal',production=True);app.init_db()
+        self.root=Path(self.temp.name).resolve();app.configure(self.root/'principal',production=True);app.init_db()
         self.password=f.bootstrap(app)
         with app.database() as db:
             row=db.execute('SELECT * FROM users').fetchone();self.user=app.user_public(db,row)
@@ -104,11 +104,22 @@ class FoundationTests(unittest.TestCase):
         with self.media:
             self.configure_backup();scheduler=f.BackupScheduler(app)
             moment=datetime.now(f.ZONE).replace(hour=17,minute=59)
+            previous=(moment-timedelta(days=1)).replace(hour=18,minute=5)
+            with patch.object(app,'utcnow',return_value=previous.isoformat()):
+                self.assertTrue(f.run_backup(app,source='automatico')['ok'])
             self.assertIsNone(scheduler.tick(moment))
             moment=moment.replace(hour=18,minute=1)
             with patch.object(app,'utcnow',return_value=moment.isoformat()):
                 self.assertTrue(scheduler.tick(moment)['ok'])
                 self.assertIsNone(scheduler.tick(moment+timedelta(minutes=10)))
+
+    def test_scheduler_catches_up_after_server_was_off_at_scheduled_time(self):
+        with self.media:
+            self.configure_backup();scheduler=f.BackupScheduler(app)
+            morning=datetime.now(f.ZONE).replace(hour=9,minute=0)
+            with patch.object(app,'utcnow',return_value=morning.isoformat()):
+                self.assertTrue(scheduler.tick(morning)['ok'])
+                self.assertIsNone(scheduler.tick(morning+timedelta(minutes=10)))
 
     def test_process_lock_prevents_recovery_while_the_installation_is_running(self):
         with f.process_lock(app.DATA_DIR):
