@@ -237,6 +237,11 @@ Las pruebas usan bases temporales y personas ficticias. `openpyxl` es opcional p
 una comprobación adicional independiente de XLSX; no se necesita para la aplicación.
 El detalle de resultados y límites de validación está en `PROJECT_STATUS.md`.
 
+La integración continua ejecuta 130 pruebas tanto en Windows/Python 3.15.1 como
+en Linux/Python 3.12. Ambas plataformas deben pasar antes de publicar la demo.
+Las comprobaciones de red usan loopback; la conexión física de oficina se realiza
+con la IP asignada a la PC principal según `deploy/RED_LOCAL.md`.
+
 ## Alcance de la versión de prueba
 
 Los iniciadores `iniciar.bat` y `probar_demo.bat` escuchan en `127.0.0.1`.

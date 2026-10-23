@@ -105,6 +105,11 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
 - Actualización con caché HTTP real: **21 comprobaciones correctas**. Los doce
   recursos antiguos permanecieron cacheados; al publicar y recargar, los nuevos
   recursos cargaron con una huella común, conservando sesión y 61 eventos.
+- Compatibilidad verificada en CI: **130 pruebas en Windows/Python 3.15.1** y
+  **130 en Linux/Python 3.12.15**, sin fallos, errores ni pruebas omitidas.
+  Ejecución 39901295747: construcción y despliegue correctos. La publicación
+  queda bloqueada si falla una plataforma. Se corrigieron la exclusividad del
+  puerto en Windows y el cierre explícito de conexiones SQLite de respaldos.
 - Regresiones V6: correcciones de entregas tras modificar el maestro, anulados
   en migración, conflicto de procesos históricos, saldos al corte, cálculos no
   finitos, formularios históricos ampliados y reemplazos SQL bloqueados.
@@ -141,8 +146,9 @@ Las siguientes comprobaciones corresponden a las entregas anteriores conservadas
 - Vistas examinadas a 1440 y 390 px sin desbordamiento horizontal ni excepciones JS.
 - Sintaxis Python y JavaScript comprobadas.
 
-Ejecutado en Linux, Python 3.12 y Chromium. No se ha ejecutado en Windows,
-Python 3.15, Safari ni dispositivos físicos. La adaptación visual móvil está
+Las pruebas locales se ejecutaron en Linux/Python 3.12 y Chromium. La integración
+continua verificó Windows/Python 3.15.1 y Linux/Python 3.12.15. No se ha ejecutado
+en Safari ni dispositivos físicos. La adaptación visual móvil está
 comprobada en navegador emulado; no equivale a una prueba física de la red de oficina.
 
 ## Límites y trabajo posterior
