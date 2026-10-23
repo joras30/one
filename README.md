@@ -1,12 +1,13 @@
 # Laboratorio de Medidas — Control de Producción
 
-Aplicación web **2.0 de pruebas controladas**, con los requisitos del modelo V6,
+Aplicación web **2.1 de pruebas controladas**, con los requisitos del modelo V6,
 adaptable a PC, tableta y celular. Amplía el prototipo Python/SQLite conservando
 sus usuarios, revisiones e identificadores; el esquema de datos es **4**.
 No requiere paquetes adicionales para ejecutarse: Python **3.11 o superior**.
 
-La interfaz usa un tablero industrial oscuro con contadores, gráficos, tablas y
-semáforos acompañados de texto. Puede ejecutarse en una sola PC o servir una
+La interfaz usa un tablero industrial oscuro con contadores, curvas temporales,
+anillos de calidad, avances por orden y tablas comparativas por técnico y actividad.
+Los semáforos incluyen texto. Puede ejecutarse en una sola PC o servir una
 misma base a los navegadores de la red de oficina desde la PC principal.
 
 ## Compartir la instalación en la oficina
@@ -32,14 +33,10 @@ El presupuesto autorizado es **costo cero**. La demo para evaluación se publica
 en **GitHub Pages**, sin servidor de pago, tarjeta ni cuenta adicional. La guía
 está en [deploy/README.md](deploy/README.md). Se retiró la propuesta de pago.
 
-En **Settings → Pages**, elige **Deploy from a branch → gh-pages → /(root) → Save**.
-La distribución ya está en esa rama. GitHub publica sus cambios en
-https://joras30.github.io/one/ después de activar Pages.
-Para entregar mejoras se actualiza la distribución en `gh-pages`; los visitantes
-solo recargan el enlace. El workflow **Construir demo gratuita** de `demo-web`
-construye y verifica un artefacto. Detecta el modo de Pages: publica automáticamente
-si está configurado con GitHub Actions; en modo de rama sirve la distribución
-publicada en `gh-pages`.
+La demo ya está publicada en https://joras30.github.io/one/. Los visitantes
+solo recargan ese enlace para ver mejoras. El workflow **Construir demo gratuita**
+de `demo-web` prueba Linux y Windows y publica automáticamente mediante GitHub
+Actions. También se mantiene una distribución en `gh-pages` para el modo de rama.
 
 La demo ejecuta las funciones del laboratorio en el navegador y guarda su SQLite
 en IndexedDB. Mantiene los registros al recargar o actualizar el código en la misma
@@ -128,7 +125,8 @@ Una base anterior conserva sus accesos; no se sustituye por datos de ejemplo.
 - Calidad de revisión y calibración: resultados de reutilización, fallos, tasas
   y desviaciones por técnico con filtros de fecha.
 - Comparativas A/B diarias, semanales, mensuales y anuales, con variación absoluta
-  y porcentual por actividad y unidad, además de métricas y metas individuales.
+  y porcentual por actividad, técnico o técnico y actividad, siempre separando
+  las unidades, además de tasas de rechazo y metas individuales compatibles.
 - Importación supervisada de revisión/sellado, con validación previa y confirmación.
 - Tablas CSV/XLSX/PDF y gráficos SVG/PNG, respetando filtros y permisos.
 - Visitante limitado a estadísticas agregadas.
@@ -166,12 +164,26 @@ estadísticas agregadas.
 
 ## Comparar períodos y descargar informes
 
-En **Comparativas**, selecciona los rangos inclusivos de A y B, la granularidad y
-los filtros. Se muestran los totales de ambos rangos por actividad y unidad;
+En **Comparativas**, selecciona los rangos inclusivos de A y B, la granularidad,
+la agrupación y los filtros. Se muestran los totales de ambos rangos por actividad,
+técnico o técnico y actividad, conservando cada unidad por separado;
 los registros y las cantidades son métricas diferentes. La variación absoluta
 es **B − A**, y el crecimiento es **(B − A) / A × 100**. Si A es cero y B es mayor
 que cero se muestra **Sin base**, sin inventar un porcentaje; si ambos son cero,
 la variación es cero. Las semanas siguen el calendario ISO, de lunes a domingo.
+
+El resumen ofrece una curva temporal por actividad y unidad con fechas, valores y
+ceros en intervalos sin producción. El anillo de aprobación utiliza
+**Apto / (Apto + No apto)**; los pendientes quedan separados. Los contadores de calidad representan
+revisiones, que pueden incluir reingresos de una misma serie. No se presentan como
+medidores únicos ni como cumplimiento de una meta no registrada.
+
+El avance de recepción es acumulado hasta la fecha de corte. Su porcentaje global
+suma `min(recibido, esperado)` por orden y divide entre lo esperado conocido:
+un excedente de una orden no oculta faltantes de otra. Las órdenes sin esperado
+señalan esa ausencia y no inventan un porcentaje. Las metas de rendimiento solo se
+comparan si corresponden al mismo período completo, responsable, actividad y unidad;
+los filtros técnicos parciales no reciben una fracción ficticia de la meta.
 
 Los reportes de calidad y comparativas pueden descargarse directamente en Excel
 o PDF con los filtros y períodos utilizados. Las tablas y gráficos existentes
@@ -190,7 +202,7 @@ en `backups/` dentro de la carpeta de datos. No se cambian contraseñas existent
 La cuenta supervisora original conserva su autoridad administrativa mediante
 el nuevo perfil Administrador; su identificador, contraseña y rol legado se mantienen.
 
-Para actualizar a la versión 2.0, genera un respaldo desde Administración y
+Para actualizar a la versión 2.1, genera un respaldo desde Administración y
 conserva una copia en otro destino autorizado. Cierra la consola de la aplicación
 antes de sustituir el código. Conserva intactas las carpetas `datos_locales`,
 `datos_demo` y sus respaldos; no las reemplaces por una carpeta vacía del paquete.

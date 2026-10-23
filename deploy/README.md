@@ -4,16 +4,17 @@ El requisito es costo cero. Esta publicación utiliza GitHub Pages en el reposit
 público `joras30/one`, sin contratar servicios ni registrar una tarjeta. Se retiró
 la propuesta de pago y su archivo render.yaml. No se ha contratado ningún servicio.
 
-## Activar GitHub Pages una vez
+## Enlace publicado y configuración
 
-1. Abre https://github.com/joras30/one/settings/pages con tu cuenta de GitHub.
-2. En **Build and deployment → Source**, selecciona **Deploy from a branch**.
-3. En **Branch**, selecciona **gh-pages** y la carpeta **/(root)**.
-4. Pulsa **Save**. La rama `gh-pages` ya contiene la distribución preparada.
-5. Espera a que GitHub termine de publicar y abre https://joras30.github.io/one/.
-   Comparte el enlace después de comprobar que responde.
+El enlace activo es https://joras30.github.io/one/. Pages ya utiliza **GitHub
+Actions**: cada actualización de `demo-web` pasa primero las pruebas Linux y Windows,
+construye el artefacto y lo despliega. Para ver las mejoras basta con recargar.
 
-Estos pasos activan Pages, sin contratar un plan. El repositorio debe permanecer
+La rama `gh-pages` también conserva la distribución construida. En otro repositorio
+puede publicarse con **Settings → Pages → Deploy from a branch → gh-pages → /(root)**,
+o seleccionando **GitHub Actions** para utilizar el workflow incluido.
+
+Esta configuración utiliza Pages sin contratar un plan. El repositorio debe permanecer
 público para utilizar esta modalidad gratuita. Las bases y documentos de empleados
 no forman parte de la publicación.
 

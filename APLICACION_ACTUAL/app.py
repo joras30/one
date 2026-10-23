@@ -52,7 +52,7 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_FAILURES = 6
 MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
-VERSION = '2.0-v6-pruebas'
+VERSION = '2.1-v6-analitica'
 SCHEMA_VERSION = 4
 
 

@@ -36,6 +36,8 @@ tests/test_documents.py
 tests/test_documents_v6.py
 tests/test_analytics_v6.py
 tests/test_v6_domain.py
+tests/test_dashboard_visuals.py
+tests/test_visual_analytics.py
 tests/run_ci.py
 deploy/README.md
 deploy/RED_LOCAL.md

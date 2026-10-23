@@ -2,7 +2,7 @@
 
 ## Entrega actual
 
-Versión 2.0 de pruebas controladas, requisitos V6, ampliada desde el prototipo Python/SQLite.
+Versión 2.1 de pruebas controladas, requisitos V6, ampliada desde el prototipo Python/SQLite.
 Python >= 3.11, biblioteca estándar, sin instalación de paquetes para ejecutar.
 Interfaz industrial oscura en español para PC y móvil. Loopback por defecto;
 modo LAN explícito con `--lan-ip` privada y SQLite en el disco de la PC principal.
@@ -15,6 +15,15 @@ Incluye inspección/calibración con error porcentual calculado, tasas de calida
 comparativas A/B por actividad y unidad en cuatro granularidades y Excel/PDF.
 La auditoría encadena SHA-256 y bloquea actualización, borrado y reemplazo SQL.
 Las versiones históricas de formularios, los registros y las claves se conservan.
+
+La actualización visual 2.1 toma las referencias de tableros suministradas por el
+usuario: contadores de revisiones, aprobación y rechazo, anillos con denominador
+explícito, tendencia temporal por actividad/unidad con fechas y ceros, seguimiento
+por orden y tablas de productividad y comparativas por técnico y actividad.
+Las variaciones A/B y tasas provienen del mismo alcance de las exportaciones.
+Las metas requieren coincidencia de período, responsable, actividad y unidad;
+las órdenes sin esperado no se convierten en un avance ficticio. No existe todavía
+un vínculo revisión–orden para atribuir tasas de calidad a un lote de recepción.
 
 Entrega 1.0.1: iniciadores Windows con comprobación de archivos del paquete,
 instrucciones de extracción completa y mensajes separados para archivos ausentes,
@@ -89,6 +98,20 @@ La conservación en la instancia actual se comprobó contra la copia anterior.
 - tests/test_documents.py: archivos, límites y formatos de intercambio.
 
 ## Validación
+
+- Analítica visual 2.1: **151 pruebas automatizadas correctas** en Linux/Python
+  3.12: 74 de HTTP y 77 de dominio y documentos. Las 21 pruebas nuevas cubren
+  intervalos con cero producción, unidades separadas, tasas, agrupación personal,
+  metas compatibles incluso con producción cero, detalle de fallos, excedentes,
+  corte histórico y privacidad. Las revisiones sin serie no se cuentan como reingresos.
+- Interfaz 2.1: **145 comprobaciones de navegador** con datos ficticios, vistas a
+  1440, 1280 y 390 píxeles, valores de curvas, anillo, avances, A/B por técnico,
+  agrupaciones, fallos, filtros, plantillas, descargas SVG/PNG/Excel/PDF y roles.
+- Distribución 2.1: **19 comprobaciones de Pages** y **16 de actualización desde
+  el esquema 3**, conservando todas las 63 filas históricas y los verificadores de
+  contraseña. Integridad SQLite y auditoría verificadas independientemente.
+
+Las siguientes cifras documentan la entrega V6 anterior a la actualización visual:
 
 - V6: **130 pruebas automatizadas correctas**: 74 de HTTP, permisos, migración,
   acceso LAN y perfil HTTPS; 56 de documentos, analítica y dominio.
