@@ -667,7 +667,7 @@ async function initialise(baseUrl) {
   py = await loadPyodide({ indexURL: new URL("runtime/", baseUrl).href });
   py.FS.mkdirTree("/app");
   py.FS.mkdirTree("/demo-data");
-  const files = ["app.py", "production.py", "documents.py", "catalogos.json", "bridge.py"];
+  const files = ["app.py", "production.py", "documents.py", "operational.py", "analytics.py", "catalogos.json", "bridge.py"];
   await Promise.all(files.map(async (name) => {
     const response = await fetch(new URL("engine/" + name, baseUrl));
     if (!response.ok) throw new Error("Falta un archivo de la demo. Actualiza la p\xE1gina.");
