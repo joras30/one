@@ -30,11 +30,13 @@ APLICACION_ACTUAL/LEEME_PRIMERO.txt
 APLICACION_ACTUAL/tests/test_application.py
 APLICACION_ACTUAL/tests/test_web_demo.py
 APLICACION_ACTUAL/tests/test_lan_v6.py
+APLICACION_ACTUAL/tests/test_windows_bind.py
 APLICACION_ACTUAL/tests/test_v6_http.py
 tests/test_documents.py
 tests/test_documents_v6.py
 tests/test_analytics_v6.py
 tests/test_v6_domain.py
+tests/run_ci.py
 deploy/README.md
 deploy/RED_LOCAL.md
 deploy/ARCHIVOS_PUBLICABLES.txt

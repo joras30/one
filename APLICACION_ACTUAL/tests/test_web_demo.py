@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import http.client
+import contextlib
 import json
 import secrets
 import socket
@@ -71,7 +72,7 @@ class WebConfigurationTests(unittest.TestCase):
     def test_unmarked_existing_database_is_never_opened_or_migrated(self):
         self.directory.mkdir()
         database = self.directory / 'laboratorio.db'
-        with sqlite3.connect(database) as db:
+        with contextlib.closing(sqlite3.connect(database)) as db, db:
             db.execute('CREATE TABLE private_example(value TEXT)')
             db.execute("INSERT INTO private_example VALUES('Synthetic guard sample')")
         before = hashlib.sha256(database.read_bytes()).digest()

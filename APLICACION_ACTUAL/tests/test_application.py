@@ -683,7 +683,7 @@ class ApplicationTests(HTTPFixture, unittest.TestCase):
         records = self.result(relogged, "/api/eventos")["records"]
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["id"], original["id"])
-        with sqlite3.connect(app.DB_PATH) as db:
+        with contextlib.closing(sqlite3.connect(app.DB_PATH)) as db, db:
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
     def test_administrator_backup_is_restorable_and_technician_is_denied(self):
@@ -697,7 +697,8 @@ class ApplicationTests(HTTPFixture, unittest.TestCase):
         backup = Path(self.temp.name) / "backups" / filename
         self.assertTrue(backup.is_file())
         restored = Path(self.temp.name) / "restauracion-prueba.db"
-        with sqlite3.connect(backup) as source, sqlite3.connect(restored) as destination:
+        with (contextlib.closing(sqlite3.connect(backup)) as source, source,
+              contextlib.closing(sqlite3.connect(restored)) as destination, destination):
             source.backup(destination)
             self.assertEqual(destination.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             row = destination.execute("SELECT id,data_json FROM production_events WHERE id=?", (record["id"],)).fetchone()
@@ -884,7 +885,7 @@ class MigrationTests(HTTPFixture, unittest.TestCase):
         self.salt = secrets.token_hex(16)
         self.digest = app.pw_hash(self.password, self.salt)
         self.legacy = self.data_dir / "laboratorio.db"
-        with sqlite3.connect(self.legacy) as db:
+        with contextlib.closing(sqlite3.connect(self.legacy)) as db, db:
             db.executescript(LEGACY_SCHEMA)
             db.execute("INSERT INTO users(id,username,name,salt,hash,role) VALUES(?,?,?,?,?,?)",
                        (7, "supervisor_legado", "Supervisor de prueba legado", self.salt, self.digest, "supervisor"))
@@ -912,7 +913,7 @@ class MigrationTests(HTTPFixture, unittest.TestCase):
         self.assertEqual({row["data"]["serie"] for row in events}, {"00000517"})
         self.assertEqual({row["work_date"] for row in events}, {"2026-09-01", "2026-10-01"})
         self.assertEqual({row["responsible_id"] for row in events}, {7})
-        with sqlite3.connect(app.DB_PATH) as db:
+        with contextlib.closing(sqlite3.connect(app.DB_PATH)) as db, db:
             self.assertEqual(db.execute("SELECT * FROM records ORDER BY id").fetchall(), self.original_records)
             user = db.execute("SELECT id,salt,hash,role,access_role FROM users WHERE username='supervisor_legado'").fetchone()
             self.assertEqual(user[0], 7)
@@ -932,7 +933,7 @@ class MigrationTests(HTTPFixture, unittest.TestCase):
         found_original = False
         for path in backups:
             try:
-                with sqlite3.connect(path) as db:
+                with contextlib.closing(sqlite3.connect(path)) as db, db:
                     if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                         continue
                     rows = db.execute("SELECT * FROM records ORDER BY id").fetchall()
@@ -958,7 +959,7 @@ class MigrationTests(HTTPFixture, unittest.TestCase):
         collision_id = new["id"]
         self.assertNotIn(collision_id, (41, 89))
         # Simulate a last request completed by the old process after the first migration.
-        with sqlite3.connect(app.DB_PATH) as db:
+        with contextlib.closing(sqlite3.connect(app.DB_PATH)) as db, db:
             db.execute("""INSERT INTO records(id,work_date,meter,brand,voltage,condition,notes,user_id,revision,created_at)
                          VALUES(?,?,?,?,?,?,?,?,?,?)""",
                        (collision_id, "2026-10-20", "000LEGADOTARDIO", "Marca legado", "240V", "Base Rota",
@@ -980,7 +981,7 @@ class MigrationTests(HTTPFixture, unittest.TestCase):
         blocked_dir = self.data_dir / "blocked-instance"
         blocked_dir.mkdir()
         untouched = blocked_dir / "laboratorio.db"
-        with sqlite3.connect(untouched) as db:
+        with contextlib.closing(sqlite3.connect(untouched)) as db, db:
             db.executescript(LEGACY_SCHEMA)
             db.execute("INSERT INTO users(id,username,name,salt,hash,role) VALUES(?,?,?,?,?,?)",
                        (7, "supervisor_legado", "Supervisor de prueba", self.salt, self.digest, "supervisor"))
@@ -999,7 +1000,7 @@ class MigrationTests(HTTPFixture, unittest.TestCase):
         self.assertRegex(message, r"El puerto \d+ ya está en uso")
         self.assertEqual(hashlib.sha256(untouched.read_bytes()).digest(), original_digest,
                          "A failed startup modified the selected database before obtaining its port")
-        with sqlite3.connect(untouched) as db:
+        with contextlib.closing(sqlite3.connect(untouched)) as db, db:
             self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 0)
             tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             self.assertNotIn("production_events", tables)

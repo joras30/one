@@ -2,6 +2,11 @@ name: Construir demo gratuita
 on:
   push:
     branches: [demo-web]
+    paths:
+      - '.github/workflows/pages.yml'
+      - 'APLICACION_ACTUAL/**'
+      - 'browser-demo/**'
+      - 'tests/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,9 +33,9 @@ jobs:
       - name: Lector independiente para comprobar archivos Excel
         run: python -m pip install --disable-pip-version-check openpyxl==3.1.5 et-xmlfile==2.0.0
       - name: HTTP, migraciones, permisos y red local
-        run: python -m unittest discover -s APLICACION_ACTUAL/tests -v
+        run: python tests/run_ci.py http
       - name: Dominio, calidad, comparativas y documentos
-        run: python -m unittest discover -s tests -v
+        run: python tests/run_ci.py domain
   build:
     needs: test
     runs-on: ubuntu-latest
