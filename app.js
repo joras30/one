@@ -134,7 +134,7 @@ async function enterApp(me) {
   $('demo-badge').textContent=S.demo?'DATOS DE PRUEBA':'PRUEBA LOCAL'; $('environment-label').textContent=S.publicDemo?'Demostración pública':S.demo?'Demostración':'Versión de pruebas';
   setRoleVisibility(); if(!S.user.must_change) await loadReferences();
   if(S.user.must_change) { await navigate('account'); toast('Elige tu contraseña personal para continuar.','warning'); }
-  else await navigate('dashboard');
+  else { $('comparison-group-by').value=isVisitor()?'activity':'technician_activity';await navigate('dashboard'); }
 }
 function filterQuery(extra={}) {
   const q=new URLSearchParams();
@@ -143,81 +143,181 @@ function filterQuery(extra={}) {
   Object.entries(extra).forEach(([key,value])=>{if(value!=='' && value!==undefined && value!==null) q.set(key,String(value));});
   return q.toString();
 }
+function setFiltersCollapsed(collapsed){$('global-filters').classList.toggle('filter-collapsed',collapsed);$('toggle-filters').setAttribute('aria-expanded',String(!collapsed));}
+function updateFilterSummary(){
+  let summary=$('filter-summary');if(!summary){summary=document.createElement('p');summary.id='filter-summary';summary.className='filter-summary';$('toggle-filters').after(summary);}
+  const parts=[S.view==='comparison'?'Períodos A / B en el configurador':S.view==='receipts'?`Acumulado al ${prettyDate(today())}`:`${prettyDate($('filter-from').value) || 'Inicio del historial'} al ${prettyDate($('filter-to').value) || 'último registro'}`];
+  for(const [id,label] of [['filter-activity','Actividad'],['filter-responsible','Colaborador'],['filter-sap','SAP'],['filter-voltage','Voltaje'],['filter-brand','Marca'],['filter-model','Modelo'],['filter-condition','Condición']]){
+    const input=$(id);if(!input.value || id==='filter-responsible'&&!isManager() || id==='filter-activity'&&['quality','receipts'].includes(S.view))continue;
+    parts.push(`${label}: ${input.tagName==='SELECT'?input.selectedOptions[0]?.textContent:input.value}`);
+  }
+  summary.textContent=parts.join(' · ');
+}
 async function navigate(view) {
   if(!pages[view]) view='dashboard';
   if(!isManager() && ['activities','import','catalogs','users','audit'].includes(view)) view='dashboard';
   if(isVisitor() && !['dashboard','quality','comparison','account'].includes(view)) view='dashboard';
   if(S.user?.must_change && view!=='account') view='account';
+  if(S.view!==view)setFiltersCollapsed(true);
   S.view=view; const ticket=++S.navigation; setMenu(false); clearError($('page-error'));
   document.querySelectorAll('.view').forEach((n)=>n.classList.add('hidden')); $(`view-${view}`).classList.remove('hidden');
   document.querySelectorAll('[data-view]').forEach((n)=>n.classList.toggle('active',n.dataset.view===view));
   const title=pages[view]; $('page-eyebrow').textContent=title[0]; $('page-title').textContent=title[1]; $('page-description').textContent=title[2]; $('current-section').textContent=title[1];
   $('global-filters').classList.toggle('hidden',!['dashboard','records','quality','comparison','receipts'].includes(view)); $('quick-capture').classList.toggle('hidden',isVisitor() || view==='capture' || S.user?.must_change);
   $('filter-from-wrap').classList.toggle('hidden',view==='comparison' || view==='receipts');$('filter-to-wrap').classList.toggle('hidden',view==='comparison' || view==='receipts');$('filter-activity-wrap').classList.toggle('hidden',view==='quality' || view==='receipts');
+  updateFilterSummary();
   $('loading-indicator').classList.remove('hidden');
   try { await ({dashboard:loadDashboard,quality:loadQuality,comparison:loadComparison,capture:loadCapture,records:loadRecords,history:async()=>{},activities:loadActivities,import:loadImport,receipts:loadReceipts,goals:loadGoals,users:loadUsers,catalogs:loadCatalogs,audit:loadAudit,account:loadAccount}[view])(); }
   catch(error) { if(ticket===S.navigation) showError($('page-error'),error); }
   finally { if(ticket===S.navigation) $('loading-indicator').classList.add('hidden'); }
 }
 
-function svgChart(id, data, title, unit='registros') {
-  if(!data?.length || !data.some((x)=>Number(x.value))) { delete S.charts[id.replace('chart-','')];$(id).innerHTML=empty('Los datos aparecerán cuando haya actividad en este período.','Aún no hay datos'); return; }
-  const rows=data.slice(0,12), width=Math.max(300,Math.min(650,$(id).clientWidth || 650)), barWidth=width-72, valueX=width-4, rowHeight=47, footerLines=chartFooter(`${chartContext()}${data.length>12?` · Se muestran 12 de ${data.length} categorías`:''}`,Math.floor(width/5)), height=68+rows.length*rowHeight+Math.max(0,footerLines.length-1)*13, max=Math.max(...rows.map((r)=>Number(r.value)||0),1);
-  const chartRows=rows.map((row,i)=>{const y=36+i*rowHeight;const value=Number(row.value)||0;const label=String(row.label || 'Sin informar');const shortened=label.length>32?`${label.slice(0,31)}…`:label;const color=id==='chart-quality-results'?['#53d6a0','#ff8b95','#f7d47a','#93a4bd'][i]:(i===0?'#ed8a24':'#73a5e7');return `<g><title>${escapeHtml(label)}: ${escapeHtml(fmt(value))} ${escapeHtml(row.unit || unit)}</title><text x="0" y="${y}" fill="#afbed1" font-family="Arial,sans-serif" font-size="12">${escapeHtml(shortened)}</text><text x="${valueX}" y="${y}" text-anchor="end" fill="#8b9fb8" font-family="Arial,sans-serif" font-size="10">${escapeHtml(row.unit || unit)}</text><rect x="0" y="${y+9}" width="${barWidth}" height="10" rx="5" fill="#26364c"/><rect x="0" y="${y+9}" width="${Math.max(0,barWidth*value/max)}" height="10" rx="5" fill="${color}"/><text x="${valueX}" y="${y+16}" text-anchor="end" fill="#e6edf7" font-family="Arial,sans-serif" font-size="12" font-weight="bold">${escapeHtml(fmt(value))}</text></g>`;}).join('');
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="chart-svg" role="img" aria-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title><rect width="${width}" height="${height}" fill="#142238"/><text x="0" y="16" fill="#e6edf7" font-family="Arial,sans-serif" font-size="13" font-weight="bold">${escapeHtml(title)}</text>${chartRows}${footerLines.map((line,i)=>`<text x="0" y="${60+rows.length*rowHeight+i*13}" fill="#8b9fb8" font-family="Arial,sans-serif" font-size="9">${escapeHtml(line)}</text>`).join('')}</svg>`;
-  $(id).innerHTML=svg; S.charts[id.replace('chart-','')]={svg,title,data,unit};
-}
+const CHART_COLORS={blue:'#39b8ee',green:'#51d69a',red:'#ff7384',amber:'#f2ca66',muted:'#8398b4',a:'#6fa9f1',b:'#f1a654'};
 function chartContext() { const from=$('filter-from').value,to=$('filter-to').value;const scope=[`${from || 'Todo el historial'}${to?' al '+to:''}`,S.user?.role==='tecnico'?'Producción propia':'Laboratorio de Medidas'];if(S.view==='quality')scope.push('Actividad: Revisión técnica');for(const [id,label] of [['filter-activity','Actividad'],['filter-responsible','Responsable'],['filter-sap','SAP'],['filter-voltage','Voltaje'],['filter-brand','Marca'],['filter-model','Modelo'],['filter-condition','Condición']]){const input=$(id);if(!input.value || id==='filter-responsible'&&!isManager() || S.view==='quality'&&id==='filter-activity')continue;scope.push(`${label}: ${input.tagName==='SELECT'?input.selectedOptions[0]?.textContent:input.value}`);}return scope.join(' · '); }
-function chartFooter(text,limit) {const words=text.split(/\s+/),lines=[];let line='';for(let word of words){while(word.length>limit){if(line){lines.push(line);line='';}lines.push(word.slice(0,limit));word=word.slice(limit);}if((line+' '+word).trim().length>limit){lines.push(line);line=word;}else line=(line+' '+word).trim();}if(line)lines.push(line);return lines;}
-async function loadDashboard() {
-  const data=await api(`/api/dashboard?${filterQuery()}`);
-  const cards=[['Registros del período',data.event_count,'Eventos de todas las actividades','▤',''],['Revisiones técnicas',data.review_count,'Una revisión por medidor','⌕','accent'],['Series identificadas',data.identified_unique,'Únicas entre registros con serie','◈',''],['Reingresos de revisión',data.reentries,'Revisiones adicionales en el período','↶',''],['Recepciones pendientes',data.receipts_pending,'Lotes pendientes al corte','⇣','']];
-  $('metrics-grid').innerHTML=cards.map(([label,value,note,icon,tone])=>`<article class="metric-card ${tone}"><div class="metric-top"><span class="metric-label">${escapeHtml(label)}</span><span class="metric-icon" aria-hidden="true">${icon}</span></div><strong class="metric-value">${fmt(value)}</strong><span class="metric-note">${escapeHtml(note)}</span></article>`).join('');
-  $('unit-summary').innerHTML=Object.entries(data.totals_by_unit || {}).map(([unit,value])=>`<span class="unit-chip"><strong>${fmt(value)}</strong> ${escapeHtml(unit)} procesados</span>`).join('')+'<span class="muted">Las cantidades se presentan por unidad; los lotes no permiten contar equipos únicos.</span>';
-  svgChart('chart-activity',data.by_activity,'Producción por actividad','unidades'); svgChart('chart-day',data.by_day,'Registros por día'); svgChart('chart-voltage',data.by_voltage,'Registros por voltaje'); if(isManager()) svgChart('chart-collaborator',data.by_collaborator,'Registros por colaborador');
-  $('dashboard-goals').innerHTML=renderGoals(data.goals || [],true);
+function chartFooter(text,limit) {const words=String(text).split(/\s+/),lines=[];let line='';for(let word of words){while(word.length>limit){if(line){lines.push(line);line='';}lines.push(word.slice(0,limit));word=word.slice(limit);}if((line+' '+word).trim().length>limit){lines.push(line);line=word;}else line=(line+' '+word).trim();}if(line)lines.push(line);return lines;}
+function chartWidth(id,max=1100){return Math.max(330,Math.min(max,$(id)?.clientWidth || max));}
+function chartTip(text,attrs=''){return `tabindex="0" role="img" aria-label="${escapeHtml(text)}" data-chart-tooltip="${escapeHtml(text)}" ${attrs}`;}
+function installChart(id,title,body,width,plotHeight,context,redraw,data=[],unit=''){
+  const lines=chartFooter(context || chartContext(),Math.max(38,Math.floor(width/5.2))),height=plotHeight+lines.length*13+19;
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="chart-svg" font-family="Arial,sans-serif" role="img" aria-label="${escapeHtml(title)}"><title>${escapeHtml(title)}</title><desc>${escapeHtml(context || chartContext())}</desc><rect width="${width}" height="${height}" fill="#142238"/><text x="12" y="20" fill="#dce9fa" font-size="12" font-weight="bold">${escapeHtml(title)}</text>${body}${lines.map((line,i)=>`<text x="12" y="${plotHeight+13+i*13}" fill="#a5b8cf" font-size="9">${escapeHtml(line)}</text>`).join('')}</svg>`;
+  $(id).innerHTML=svg;S.charts[id.replace('chart-','')]={svg,title,data,unit,redraw};
+}
+function clearChart(id,message){delete S.charts[id.replace('chart-','')];$(id).innerHTML=empty(message || 'Los datos aparecerán cuando haya actividad en este período.','Sin datos para esta selección');}
+function niceMax(value){if(!(value>0))return 1;const magnitude=10**Math.floor(Math.log10(value)),step=[1,2,2.5,5,10].find((x)=>x*magnitude>=value);return step*magnitude;}
+function tickDate(point){const date=point.from || point.date || point.start;if(date && /^\d{4}-\d{2}-\d{2}$/.test(date))return new Intl.DateTimeFormat('es-DO',{day:'2-digit',month:'short',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));return point.label;}
+function lineChart(id,points,title,unit,context,granularity=$('dashboard-granularity').value){
+  if(!points?.length)return clearChart(id);
+  const width=chartWidth(id),left=53,right=width-22,top=53,bottom=239,max=niceMax(Math.max(...points.map((p)=>Number(p.value)||0))),span=right-left;
+  const x=(i)=>points.length===1?left+span/2:left+i*span/(points.length-1),y=(value)=>bottom-(Number(value)||0)/max*(bottom-top);
+  let body=`<defs><linearGradient id="${id}-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#38b9ed" stop-opacity=".38"/><stop offset="100%" stop-color="#38b9ed" stop-opacity=".025"/></linearGradient></defs><text x="${left}" y="39" fill="#a8bdd5" font-size="10">${escapeHtml(unit)}</text>`;
+  for(let i=0;i<=4;i++){const value=max*i/4,yy=y(value);body+=`<line x1="${left}" x2="${right}" y1="${yy}" y2="${yy}" stroke="#32445b" stroke-dasharray="3 4"/><text x="${left-9}" y="${yy+4}" text-anchor="end" fill="#a5b9d1" font-size="10">${escapeHtml(fmt(value))}</text>`;}
+  const path=points.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(2)},${y(p.value).toFixed(2)}`).join(' ');
+  if(points.length>1)body+=`<path d="${path} L${x(points.length-1)},${bottom} L${x(0)},${bottom} Z" fill="url(#${id}-area)"/><path d="${path}" fill="none" stroke="#3cc4f6" stroke-width="2.7" stroke-linejoin="round"/>`;
+  const step=Math.max(1,Math.ceil(points.length/(width<500?4:8))),valueStep=Math.max(1,Math.ceil(points.length/(width<500?5:14)));
+  body+=points.map((p,i)=>{const text=`${p.label}${p.from?' · '+p.from+' al '+p.to:''}: ${fmt(p.value)} ${unit}${p.records===undefined?'':' · '+fmt(p.records)+' registros'}`;return `<g ${chartTip(text,`data-value="${Number(p.value)||0}" data-date="${escapeHtml(p.from || p.date || p.label)}" data-series="${escapeHtml(title)}"`)}><title>${escapeHtml(text)}</title><circle cx="${x(i)}" cy="${y(p.value)}" r="9" fill="transparent"/><circle cx="${x(i)}" cy="${y(p.value)}" r="3.7" fill="#63d4fa" stroke="#142238" stroke-width="1.5"/>${i%valueStep===0 || i===points.length-1?`<text x="${x(i)}" y="${Math.max(top-5,y(p.value)-11)}" fill="#e8f5ff" text-anchor="middle" font-size="10" font-weight="bold">${escapeHtml(fmt(p.value))}</text>`:''}</g>${i%step===0 || i===points.length-1?`<text x="${x(i)}" y="${bottom+22}" fill="#b4c7de" text-anchor="${i===0?'start':i===points.length-1?'end':'middle'}" font-size="10">${escapeHtml(tickDate(p))}</text>`:''}`;}).join('');
+  body+=`<text x="${right}" y="${bottom+41}" text-anchor="end" fill="#8ea6c2" font-size="9">Fecha de trabajo · ${escapeHtml(granularityLabel(granularity))}</text>`;
+  installChart(id,title,body,width,295,`${context} · Unidad: ${unit} · Intervalos sin producción = 0.`,()=>lineChart(id,points,title,unit,context,granularity),points,unit);
+}
+function columnChart(id,data,title,defaultUnit='registros',context=chartContext()){
+  if(!data?.length || !data.some((x)=>Number(x.value)))return clearChart(id);
+  const width=chartWidth(id),groups=new Map();for(const row of data){const unit=row.unit || defaultUnit;if(!groups.has(unit))groups.set(unit,[]);groups.get(unit).push(row);}
+  let body='',offset=39;
+  for(const [unit,allRows] of groups){const rows=allRows.slice(0,12),left=46,right=width-17,top=offset+32,bottom=offset+191,max=niceMax(Math.max(...rows.map((r)=>Number(r.value)||0))),slot=(right-left)/rows.length,bar=Math.min(65,slot*.58);
+    body+=`<text x="12" y="${offset+9}" fill="#9dc5e9" font-size="11" font-weight="bold">${escapeHtml(unit)}</text>`;
+    for(let i=0;i<=4;i++){const v=max*i/4,yy=bottom-v/max*(bottom-top);body+=`<line x1="${left}" x2="${right}" y1="${yy}" y2="${yy}" stroke="#2b4059" stroke-dasharray="3 4"/><text x="${left-8}" y="${yy+4}" fill="#9eb3cd" font-size="10" text-anchor="end">${fmt(v)}</text>`;}
+    body+=rows.map((row,i)=>{const value=Number(row.value)||0,x=left+slot*(i+.5),h=value/max*(bottom-top),label=String(row.label || 'Sin informar'),words=chartFooter(label,Math.max(6,Math.floor(slot/5.8))).slice(0,3),tip=`${label}: ${fmt(value)} ${unit}`;return `<g ${chartTip(tip,`data-value="${value}" data-series="${escapeHtml(label)}"`)}><title>${escapeHtml(tip)}</title><rect x="${x-bar/2}" y="${bottom-h}" width="${bar}" height="${Math.max(.5,h)}" rx="3" fill="${i%2?'#3b9ed5':'#42c3e5'}"/><text x="${x}" y="${bottom-h-8}" fill="#e4f1ff" font-size="11" font-weight="bold" text-anchor="middle">${fmt(value)}</text>${words.map((word,j)=>`<text x="${x}" y="${bottom+18+j*12}" text-anchor="middle" fill="#b9cbe0" font-size="9">${escapeHtml(word)}</text>`).join('')}</g>`;}).join('');
+    if(allRows.length>12)body+=`<text x="12" y="${bottom+64}" fill="#a6bbd5" font-size="9">Se muestran 12 de ${allRows.length} categorías; consulta el detalle para el resto.</text>`;
+    offset+=275;
+  }
+  installChart(id,title,body,width,offset+4,context,()=>columnChart(id,data,title,defaultUnit,context),data,defaultUnit);
+}
+// Horizontal ranking is used only for comparable frequencies (people or failure types).
+function svgChart(id,data,title,unit='registros',context=chartContext()){
+  if(!data?.length || !data.some((x)=>Number(x.value)))return clearChart(id);
+  const width=chartWidth(id,850),rows=data.slice(0,12),left=12,right=width-65,max=Math.max(...rows.map((r)=>Number(r.value)||0),1),rowHeight=48;
+  const body=rows.map((row,i)=>{const yy=52+i*rowHeight,value=Number(row.value)||0,label=String(row.label || 'Sin informar'),display=label.length>Math.floor(width/7)?label.slice(0,Math.floor(width/7)-1)+'…':label,tip=`${label}: ${fmt(value)} ${row.unit || unit}`;return `<g ${chartTip(tip,`data-value="${value}" data-series="${escapeHtml(label)}"`)}><title>${escapeHtml(tip)}</title><text x="${left}" y="${yy}" fill="#bdcee3" font-size="11">${escapeHtml(display)}</text><rect x="${left}" y="${yy+9}" width="${right-left}" height="10" rx="4" fill="#273a53"/><rect x="${left}" y="${yy+9}" width="${(right-left)*value/max}" height="10" rx="4" fill="${id==='chart-quality-failures'?'#efaa6b':'#60bdf1'}"/><text x="${width-12}" y="${yy+17}" text-anchor="end" fill="#e0edfc" font-size="12" font-weight="bold">${fmt(value)}</text></g>`;}).join('');
+  installChart(id,title,body,width,68+rows.length*rowHeight,`${context} · Unidad: ${unit}${data.length>12?` · 12 de ${data.length} categorías visibles`:''}`,()=>svgChart(id,data,title,unit,context),data,unit);
+}
+function qualityDonut(id,summary,context=chartContext()){
+  const width=chartWidth(id,650),cx=width<420?96:145,cy=133,r=68,circ=2*Math.PI*r,approved=Number(summary.approved)||0,rejected=Number(summary.rejected)||0,evaluated=approved+rejected,rate=evaluated?approved/evaluated*100:null,green=evaluated?approved/evaluated*circ:0,red=evaluated?rejected/evaluated*circ:0,lx=width<420?191:265;
+  let body=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#2d415a" stroke-width="18"/>`;
+  if(evaluated){body+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#54d69b" stroke-width="18" stroke-dasharray="${green} ${circ-green}" transform="rotate(-90 ${cx} ${cy})"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#ff7384" stroke-width="18" stroke-dasharray="${red} ${circ-red}" stroke-dashoffset="${-green}" transform="rotate(-90 ${cx} ${cy})"/>`;}
+  body+=`<g ${chartTip(evaluated?`Aprobación: ${percent(rate)} · ${fmt(approved)} aprobadas de ${fmt(evaluated)} evaluadas`:'Sin evaluaciones concluidas',`data-value="${rate===null?'':rate}" data-series="Aprobación"`)}><title>${evaluated?`${fmt(approved)} / ${fmt(evaluated)} evaluadas`:'Sin evaluaciones'}</title><text x="${cx}" y="${cy+2}" fill="#e5f7ee" font-size="${width<420?24:30}" font-weight="bold" text-anchor="middle">${rate===null?'—':percent(rate)}</text><text x="${cx}" y="${cy+23}" fill="#9eb5ca" font-size="10" text-anchor="middle">${evaluated?'APROBACIÓN':'SIN EVALUACIONES'}</text></g>`;
+  const values=[['Aprobadas',approved,CHART_COLORS.green],['Rechazadas',rejected,CHART_COLORS.red],['Pendientes',Number(summary.pending)||0,CHART_COLORS.amber],['Sin resultado',Number(summary.without_result)||0,CHART_COLORS.muted]];
+  body+=values.map(([label,value,color],i)=>`<g ${chartTip(`${label}: ${fmt(value)} revisiones`,`data-value="${value}" data-series="${label}"`)}><title>${label}: ${fmt(value)}</title><circle cx="${lx}" cy="${73+i*40}" r="4" fill="${color}"/><text x="${lx+12}" y="${76+i*40}" fill="#bfd0e3" font-size="10">${label}</text><text x="${lx+12}" y="${93+i*40}" fill="${color}" font-size="16" font-weight="bold">${fmt(value)}</text></g>`).join('');
+  body+=`<text x="12" y="247" fill="#c0d4e9" font-size="11">Denominador: ${fmt(evaluated)} evaluadas = ${fmt(approved)} aptas + ${fmt(rejected)} no aptas.</text>`;
+  installChart(id,'Resultados de revisión técnica',body,width,270,`${context} · Pendientes y sin resultado fuera de las tasas. Las cifras representan revisiones, no medidores únicos.`,()=>qualityDonut(id,summary,context),values.map(([label,value])=>({label,value})),'revisiones');
 }
 function metricCards(items) {
   return items.map(([label,value,note,tone=''])=>`<article class="metric-card ${escapeHtml(tone)}"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${value===null || value===undefined?'—':typeof value==='string'?escapeHtml(value):fmt(value)}</strong><span class="metric-note">${escapeHtml(note || '')}</span></article>`).join('');
 }
-function signalBadge(signal,label) {
-  const color=signal==='verde'?'good':signal==='rojo'?'danger':'warn',icon=signal==='verde'?'🟢':signal==='rojo'?'🔴':'🟡';
-  return `<span class="badge ${color} operational-signal"><span aria-hidden="true">${icon}</span>${escapeHtml(label)}</span>`;
-}
+function signalBadge(signal,label) {const color=signal==='verde'?'good':signal==='rojo'?'danger':'warn',icon=signal==='verde'?'🟢':signal==='rojo'?'🔴':'🟡';return `<span class="badge ${color} operational-signal"><span aria-hidden="true">${icon}</span>${escapeHtml(label)}</span>`;}
 function percent(value) {return value===null || value===undefined?'—':`${fmt(value)} %`;}
 function signed(value) {return value>0?`+${fmt(value)}`:fmt(value);}
 function variation(value,state) {return value===null || state==='sin_base'?'Sin base':`${signed(value)} %`;}
 function granularityLabel(value) {return ({diaria:'Diaria',semanal:'Semanal · semana ISO',mensual:'Mensual',anual:'Anual'})[value] || value;}
-async function loadQuality() {
+function initialAvatar(name){return String(name || '?').trim().split(/\s+/).slice(0,2).map((part)=>part[0]).join('').toUpperCase();}
+function personCell(name,username=''){return `<div class="person-cell"><span class="person-avatar" aria-hidden="true">${escapeHtml(initialAvatar(name))}</span><div><strong class="person-name">${escapeHtml(name || 'Sin responsable')}</strong>${username?`<small class="person-meta">${escapeHtml(username)}</small>`:''}</div></div>`;}
+function sparkline(points,unit='revisiones'){
+  if(!points?.length)return '<span class="muted">Sin serie</span>';
+  const values=points.map((p)=>Number(p.value)||0),max=Math.max(...values,1),width=88,height=29,x=(i)=>values.length===1?44:3+i*82/(values.length-1),y=(value)=>25-value/max*21,description=points.map((p)=>`${p.label}: ${fmt(p.value)} ${unit}`).join('; ');
+  return `<span class="sparkline"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(description)}"><title>${escapeHtml(description)}</title>${values.length>1?`<path d="${values.map((v,i)=>`${i?'L':'M'}${x(i)},${y(v)}`).join(' ')}" fill="none" stroke="#58c8f0" stroke-width="2"/>`:''}${values.length<=35?values.map((v,i)=>`<circle cx="${x(i)}" cy="${y(v)}" r="1.6" fill="#6bd4f5"/>`).join(''):''}</svg></span>`;
+}
+function heroCard(label,value,note,icon,tone,metric){return `<article class="metric-card hero-card kpi-${tone}" data-metric="${metric}" data-value="${escapeHtml(value)}"><div class="hero-icon" aria-hidden="true">${icon}</div><div class="hero-content"><span class="metric-label">${escapeHtml(label)}</span><strong class="metric-value">${typeof value==='string'?escapeHtml(value):fmt(value)}</strong><span class="metric-note">${escapeHtml(note)}</span></div></article>`;}
+function receiptContext(){const filters=[['filter-sap','SAP'],['filter-voltage','Voltaje'],['filter-brand','Marca'],['filter-model','Modelo'],['filter-condition','Condición']].filter(([id])=>$(id).value).map(([id,label])=>`${label}: ${$(id).value}`);const cutoff=S.view==='dashboard'?($('filter-to').value || today()):today();return `Estado al ${cutoff} · Acumulado de entregas en medidores hasta el corte; Desde no aplica${filters.length?' · '+filters.join(' · '):''}`;}
+async function loadDashboard(){
+  const context=chartContext(),receiptScope=receiptContext(),data=await api(`/api/dashboard?${filterQuery({granularity:$('dashboard-granularity').value})}`);S.dashboard=data;S.dashboardContext=context;S.dashboardReceiptContext=receiptScope;
+  const q=data.summary_quality || {total:data.review_count,approved:0,rejected:0,evaluated:0,approval_rate:null};
+  const meter='<svg viewBox="0 0 48 56" width="42" height="49" fill="none"><rect x="6" y="3" width="36" height="46" rx="9" stroke="currentColor" stroke-width="2.5"/><rect x="12" y="11" width="24" height="11" rx="2" fill="currentColor" fill-opacity=".18" stroke="currentColor"/><circle cx="24" cy="34" r="6" stroke="currentColor" stroke-width="2"/><path d="M24 30v5l4 2M14 49v5m20-5v5" stroke="currentColor" stroke-width="2"/></svg>';
+  const ring=`<span class="hero-ring"><svg viewBox="0 0 64 64" width="64" height="64" fill="none"><circle cx="32" cy="32" r="25" stroke="#2d415b" stroke-width="7"/><circle cx="32" cy="32" r="25" stroke="#39b8ee" stroke-width="7" stroke-dasharray="${(q.approval_rate || 0)/100*157.08} 157.08" transform="rotate(-90 32 32)"/><text x="32" y="38" fill="#b8dcf9" text-anchor="middle" font-size="19" font-family="Arial,sans-serif">%</text></svg></span>`;
+  $('metrics-grid').innerHTML=heroCard('Revisiones realizadas',q.total ?? data.review_count,'Revisiones válidas en el período',meter,'blue','reviews')+heroCard('Revisiones aprobadas',q.approved,'Resultado técnico: Apto','✓','green','approved')+heroCard('Revisiones rechazadas',q.rejected,'Resultado técnico: No apto','✕','red','rejected')+heroCard('Tasa de aprobación',q.evaluated?percent(q.approval_rate):'—',q.evaluated?`${fmt(q.approved)} / ${fmt(q.evaluated)} evaluadas`:'Sin evaluaciones concluidas',ring,'amber','approval-rate');
+  $('dashboard-scope').innerHTML=[['Registros de actividad',data.event_count],['Series identificadas',data.identified_unique],['Reingresos de revisión',data.reentries],['Lotes pendientes',data.receipts_pending],['Revisiones sin concluir',(q.pending || 0)+(q.without_result || 0)]].map(([label,value])=>`<div class="scope-stat"><strong>${fmt(value)}</strong><span>${label}</span></div>`).join('');
+  $('unit-summary').innerHTML=Object.entries(data.totals_by_unit || {}).map(([unit,value])=>`<span class="unit-chip"><strong>${fmt(value)}</strong> ${escapeHtml(unit)}</span>`).join('')+'<span class="muted">Cantidades por unidad. Los registros y las revisiones no equivalen a medidores físicos únicos.</span>';
+  const previous=$('dashboard-series').value,series=data.trend?.series || [];
+  $('dashboard-series').innerHTML=options(series.map((row)=>({value:row.id,label:`${row.activity_name} · ${row.unit}`})),series.some((r)=>r.id===previous)?previous:(series.find((r)=>r.activity_id==='revision')?.id || series[0]?.id),null);
+  renderDashboardTrend();renderDashboardBatches();
+  columnChart('chart-activity',data.by_activity,'Cantidades por actividad y unidad','unidades');columnChart('chart-voltage',data.by_voltage,'Registros por voltaje','registros');if(isManager())svgChart('chart-collaborator',data.by_collaborator,'Registros por responsable','registros');else delete S.charts.collaborator;
+  $('dashboard-goals').innerHTML=renderGoals(data.goals || [],true);
+}
+function renderDashboardTrend(){
+  const trend=S.dashboard?.trend,series=trend?.series?.find((row)=>String(row.id)===$('dashboard-series').value);
+  if(!series){$('dashboard-trend-meta').textContent='Selecciona un período con producción.';clearChart('chart-day');return;}
+  $('dashboard-trend-meta').innerHTML=`<strong>${fmt(series.total)} ${escapeHtml(series.unit)}</strong><span>${escapeHtml(trend.from)} al ${escapeHtml(trend.to)}</span>`;
+  const context=`${S.dashboardContext} · Serie: ${series.activity_name} · ${granularityLabel(trend.granularity)}`;
+  lineChart('chart-day',series.points,`${series.activity_name} · ${series.unit}`,series.unit,context,trend.granularity);
+  let detail=$('dashboard-trend-table');if(!detail){detail=document.createElement('details');detail.id='dashboard-trend-table';detail.className='chart-details';$('chart-day').after(detail);}detail.innerHTML=`<summary>Ver cantidades exactas por intervalo</summary>${table(['Intervalo','Desde','Hasta',series.unit,'Registros'],(series.points || []).map((p)=>[escapeHtml(p.label),escapeHtml(p.from || p.start),escapeHtml(p.to || p.end),fmt(p.value),fmt(p.records)]))}`;
+}
+function orderProgress(order){if(order.expected===null || order.expected===undefined)return '<span class="muted">Esperado por confirmar</span>';const n=order.progress_pct ?? (order.expected?order.received/order.expected*100:null);if(n===null)return '<span class="muted">Sin cantidad esperada</span>';return `<div class="order-progress"><progress class="lot-bar ${order.signal==='rojo'?'is-red':order.signal==='verde'?'is-green':''}" value="${Math.min(100,Math.max(0,n))}" max="100" aria-label="Avance de recepción: ${escapeHtml(percent(n))}"></progress><strong>${percent(n)}</strong></div>`;}
+function renderDashboardBatches(){
+  const data=S.dashboard,rows=data.batch_progress || [],shown=rows.slice(0,10),summary=data.receipt_summary || {};
+  $('dashboard-lots-note').textContent=`${S.dashboardReceiptContext}. ${fmt(summary.pending_total)} medidores pendientes en órdenes con esperado confirmado${summary.unknown_orders?`; ${fmt(summary.unknown_orders)} órdenes por confirmar`:''}.`;
+  $('dashboard-lots').innerHTML=shown.length?`<div class="lot-list">${shown.map((o)=>`<div class="lot-row"><div class="lot-identity"><strong>${escapeHtml(o.process)}</strong><small>Orden ${escapeHtml(o.order_number)} · SAP ${escapeHtml(o.sap || 'Sin informar')}</small></div><div class="lot-amount"><strong>${fmt(o.received)} <span>/ ${o.expected===null?'Por confirmar':fmt(o.expected)}</span></strong><small>${o.pending===null?'Saldo por confirmar':`${fmt(o.pending)} pendientes`}${o.excess?` · ${fmt(o.excess)} en exceso`:''}</small></div>${orderProgress(o)}<div class="lot-status">${signalBadge(o.signal,orderStateLabel(o))}${o.due_date?`<small class="table-subline">Límite: ${escapeHtml(prettyDate(o.due_date))}</small>`:''}</div></div>`).join('')}</div>${rows.length>10?`<p class="table-note">Se muestran 10 de ${fmt(rows.length)} lotes; consulta Recepciones para el detalle.</p>`:''}`:empty('No hay órdenes dentro de los filtros seleccionados.','Sin lotes en seguimiento');
+  batchChart(rows,S.dashboardReceiptContext);
+}
+function batchChart(rows,context=receiptContext()){
+  if(!rows?.length)return clearChart('chart-batch-progress','No hay órdenes con estos filtros.');
+  const id='chart-batch-progress',width=chartWidth(id,1000),shown=rows.slice(0,16),left=12,right=width-100,rowHeight=62;
+  const body=shown.map((o,i)=>{const yy=52+i*rowHeight,has=o.expected!==null && o.expected!==undefined && o.expected>0,n=has?o.received/o.expected*100:null,tip=`${o.process} · SAP ${o.sap || 'Sin informar'} · ${fmt(o.received)} recibidos / ${has?fmt(o.expected):'Por confirmar'} esperados · Pendiente ${o.pending===null?'Por confirmar':fmt(o.pending)}${o.excess?' · Exceso '+fmt(o.excess):''}`;return `<g ${chartTip(tip,`data-value="${n===null?'':n}" data-series="${escapeHtml(o.process)}"`)}><title>${escapeHtml(tip)}</title><text x="12" y="${yy}" fill="#d4e3f5" font-size="11">${escapeHtml(o.process)} · ${fmt(o.received)} / ${has?fmt(o.expected):'Por confirmar'}</text><rect x="${left}" y="${yy+9}" width="${right-left}" height="12" rx="5" fill="#2e4158"/>${has?`<rect x="${left}" y="${yy+9}" width="${(right-left)*Math.min(1,o.received/o.expected)}" height="12" rx="5" fill="${o.signal==='rojo'?CHART_COLORS.red:o.signal==='verde'?CHART_COLORS.green:CHART_COLORS.blue}"/>`:''}<text x="${width-12}" y="${yy+19}" text-anchor="end" fill="#dfedfc" font-size="11">${n===null?'Sin base':percent(n)}</text><text x="12" y="${yy+38}" fill="#a6bcd5" font-size="9">${escapeHtml(orderStateLabel(o))}${o.due_date?' · Límite '+o.due_date:''}</text></g>`;}).join('');
+  installChart(id,'Avance de recepción por lote',body,width,58+shown.length*rowHeight,`${context} · Barras: recibido / esperado, escala 0–100 %. Los excesos conservan su porcentaje numérico.${rows.length>16?' Se muestran 16 lotes de '+rows.length+'.':''}`,()=>batchChart(rows,context),rows,'medidores');
+}
+function qualityState(row){return row.traffic_light==='rojo'?'Revisar hallazgos':row.traffic_light==='verde'?'Evaluaciones aprobadas':'Evaluación pendiente';}
+async function loadQuality(){
   const query=new URLSearchParams(filterQuery({granularity:$('quality-granularity').value}));query.delete('activity_id');
-  const data=await api(`/api/calidad?${query}`),summary=data.summary;
-  $('quality-status').innerHTML=signalBadge(summary.traffic_light,summary.traffic_light==='rojo'?'Hay rechazos o mediciones fuera de tolerancia':summary.traffic_light==='verde'?'Evaluaciones aprobadas':'Revisar pendientes o datos sin evaluación');
-  $('quality-metrics').innerHTML=metricCards([
-    ['Revisiones técnicas',summary.total,'Registros válidos en el período'],['Evaluaciones concluidas',summary.evaluated,'Apto + No apto'],
-    ['Tasa de aprobación',percent(summary.approval_rate),`${fmt(summary.approved)} aprobadas / ${fmt(summary.evaluated)} evaluadas`,'positive'],['Tasa de rechazo',percent(summary.rejection_rate),`${fmt(summary.rejected)} rechazadas / ${fmt(summary.evaluated)} evaluadas`],
-    ['Mediciones de calibración',summary.calibrations,'Con referencia y medición registradas'],['Fuera de tolerancia',summary.calibrations_outside_tolerance,'Desviación absoluta superior al límite'],
-    ['Desviación media',percent(summary.mean_deviation_pct),'Promedio de las desviaciones con signo'],['Desviación absoluta media',percent(summary.mean_absolute_deviation_pct),'Promedio de la magnitud del error']]);
-  $('quality-denominator').textContent=`Las tasas usan ${fmt(summary.evaluated)} evaluaciones concluidas. Pendientes: ${fmt(summary.pending)}. Sin resultado: ${fmt(summary.without_result)}. Los registros sin decisión no se cuentan como aprobados ni rechazados. El semáforo es rojo si hay rechazos o mediciones fuera de tolerancia; amarillo si faltan resultados; verde si las evaluaciones están aprobadas.`;
-  svgChart('chart-quality-results',[{label:'Aprobadas',value:summary.approved},{label:'Rechazadas',value:summary.rejected},{label:'Pendientes',value:summary.pending},{label:'Sin resultado',value:summary.without_result}],'Resultados de revisión técnica');
-  svgChart('chart-quality-failures',data.by_failure || [],'Fallos detectados');
-  $('quality-technicians').innerHTML=table(['Técnico','Revisiones / evaluadas','Aprobación','Rechazo','Pendientes / sin resultado','Calibraciones','Fuera de tolerancia','Desviación media','Desviación absoluta media'],(data.by_technician || []).map((row)=>[
-    `<strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.username || '')}</small>`,`${fmt(row.total)} / ${fmt(row.evaluated)}`,percent(row.approval_rate),percent(row.rejection_rate),`${fmt(row.pending)} / ${fmt(row.without_result)}`,fmt(row.calibrations),row.calibrations_outside_tolerance?signalBadge('rojo',fmt(row.calibrations_outside_tolerance)):fmt(0),percent(row.mean_deviation_pct),percent(row.mean_absolute_deviation_pct)]));
+  const data=await api(`/api/calidad?${query}`),q=data.summary;S.quality=data;S.qualityQuery=query.toString();
+  $('quality-status').innerHTML=signalBadge(q.traffic_light,qualityState(q));
+  $('quality-metrics').innerHTML=metricCards([['Revisiones técnicas',q.total,'Registros válidos en el período'],['Tasa de aprobación',percent(q.approval_rate),`${fmt(q.approved)} aptas / ${fmt(q.evaluated)} evaluadas`,'kpi-green'],['Tasa de rechazo',percent(q.rejection_rate),`${fmt(q.rejected)} no aptas / ${fmt(q.evaluated)} evaluadas`,'kpi-red'],['Sin concluir',(q.pending || 0)+(q.without_result || 0),`${fmt(q.pending)} pendientes · ${fmt(q.without_result)} sin resultado`],['Mediciones de calibración',q.calibrations,'Con referencia y medición'],['Fuera de tolerancia',q.calibrations_outside_tolerance,'Magnitud de desviación superior al límite'],['Desviación media',percent(q.mean_deviation_pct),'Promedio de desviaciones con signo'],['Desviación absoluta media',percent(q.mean_absolute_deviation_pct),'Promedio de la magnitud de desviación']]);
+  $('quality-denominator').textContent=`Base de las tasas: ${fmt(q.evaluated)} evaluaciones concluidas = ${fmt(q.approved)} aptas + ${fmt(q.rejected)} no aptas. Pendientes: ${fmt(q.pending)}; sin resultado: ${fmt(q.without_result)}. Una revisión repetida vuelve a contar como revisión.`;
+  qualityDonut('chart-quality-results',q);svgChart('chart-quality-failures',data.by_failure || [],'Frecuencia de fallos informados','revisiones');
+  const scopes=data.target_scope_labels || {};
+  $('quality-technicians').innerHTML=table(['Técnico responsable','Producción exacta','Tendencia de revisiones','Meta del período','Desviación vs. meta','Aprobación','Rechazo','Fuera de tolerancia','Desviación de medición','Estado de calidad'],(data.by_technician || []).map((row)=>{
+    const quantity=row.produced_quantity ?? (row.quantities_by_unit?null:row.total),target=row.assigned_target,scope=scopes[row.target_scope] || 'Sin meta exacta para este alcance',delta=quantity!==null && target!==null && target!==undefined?quantity-target:null;
+    return [personCell(row.name,row.username),`<strong class="production-value">${quantity===null?Object.entries(row.quantities_by_unit || {}).map(([unit,value])=>`${fmt(value)} ${escapeHtml(unit)}`).join('<br>'):`${fmt(quantity)} ${escapeHtml(row.unit || 'revisiones')}`}</strong><small>${fmt(row.total)} revisiones · ${fmt(row.evaluated)} evaluadas</small>`,sparkline(row.trend,'registros de revisión'),target===null || target===undefined?`<span title="${escapeHtml(scope)}">Sin meta exacta</span>`:`<strong>${fmt(target)} ${escapeHtml(row.unit)}</strong>${progress(row.attainment)}`,delta===null?'—':`<span class="numeric-change ${delta<0?'negative':delta>0?'positive':''}">${signed(delta)}</span>`,`${percent(row.approval_rate)}<small>${fmt(row.approved)} aptas</small>`,`${percent(row.rejection_rate)}<small>${fmt(row.rejected)} no aptas / ${fmt(row.evaluated)}</small>`,fmt(row.calibrations_outside_tolerance),`${percent(row.mean_deviation_pct)}<small>Absoluta: ${percent(row.mean_absolute_deviation_pct)}</small>`,signalBadge(row.traffic_light,qualityState(row))];
+  }));
+  $('quality-technicians').querySelector('table')?.classList.add('analytics-table','quality-tech-table');
+  renderQualityFailures();
   $('quality-period-label').textContent=`${granularityLabel(data.period?.granularity || $('quality-granularity').value)} · ${data.period?.desde || $('filter-from').value || 'Inicio del historial'} al ${data.period?.hasta || $('filter-to').value || today()}`;
   $('quality-timeline').innerHTML=table(['Intervalo','Revisiones','Aprobadas','Rechazadas','Pendientes','Sin resultado','Aprobación','Fuera de tolerancia'],(data.by_period || []).map((row)=>[escapeHtml(row.label),fmt(row.total),fmt(row.approved),fmt(row.rejected),fmt(row.pending),fmt(row.without_result),percent(row.approval_rate),fmt(row.calibrations_outside_tolerance)]));
   for(const format of ['xlsx','pdf'])$(`quality-export-${format}`).href=`/api/calidad.${format}?${query}`;
 }
-function comparisonChart(data) {
-  const container=$('chart-comparison'),rows=(data.rows || []).slice(0,12);
-  if(!rows.length){delete S.charts.comparison;container.innerHTML=empty('La comparación aparecerá cuando haya producción en alguno de los períodos.','Sin actividad para comparar');return;}
-  const width=Math.max(330,Math.min(760,container.clientWidth || 760)),barWidth=width-90,valueX=width-3,rowHeight=78;
-  const context=`A: ${data.period_a.from} al ${data.period_a.to} · B: ${data.period_b.from} al ${data.period_b.to} · ${S.user?.role==='tecnico'?'Producción propia':'Laboratorio de Medidas'}${data.rows.length>12?` · Se muestran 12 de ${data.rows.length} filas`:''}`;
-  const filters=[['filter-activity','Actividad'],['filter-responsible','Colaborador'],['filter-sap','SAP'],['filter-voltage','Voltaje'],['filter-brand','Marca'],['filter-model','Modelo'],['filter-condition','Condición']].filter(([id])=>$(id).value && (id!=='filter-responsible' || isManager())).map(([id,label])=>`${label}: ${$(id).tagName==='SELECT'?$(id).selectedOptions[0].textContent:$(id).value}`).join(' · ');
-  const footer=chartFooter([context,filters,'Escala independiente por fila: compara A y B dentro de la misma actividad y unidad.'].filter(Boolean).join(' · '),Math.floor(width/5.1));
-  const height=70+rows.length*rowHeight+footer.length*13;
-  const bars=rows.map((row,index)=>{const y=51+index*rowHeight,max=Math.max(row.a,row.b,1),label=`${row.activity_name} · ${row.unit}`,shortened=label.length>Math.floor(width/7)?label.slice(0,Math.floor(width/7)-1)+'…':label;return `<g><title>${escapeHtml(label)}: A ${fmt(row.a)}, B ${fmt(row.b)}</title><text x="0" y="${y}" fill="#cfdef3" font-size="12">${escapeHtml(shortened)}</text><text x="0" y="${y+23}" fill="#a8caf4" font-size="10">A</text><rect x="17" y="${y+13}" width="${barWidth}" height="12" rx="3" fill="#22344d"/><rect x="17" y="${y+13}" width="${barWidth*row.a/max}" height="12" rx="3" fill="#73a5e7"/><text x="${valueX}" y="${y+23}" fill="#d7e8ff" font-size="12" text-anchor="end">${escapeHtml(fmt(row.a))}</text><text x="0" y="${y+45}" fill="#ffc286" font-size="10">B</text><rect x="17" y="${y+35}" width="${barWidth}" height="12" rx="3" fill="#22344d"/><rect x="17" y="${y+35}" width="${barWidth*row.b/max}" height="12" rx="3" fill="#ef9a49"/><text x="${valueX}" y="${y+45}" fill="#ffe0bc" font-size="12" text-anchor="end">${escapeHtml(fmt(row.b))}</text></g>`;}).join('');
-  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="chart-svg" font-family="Arial,sans-serif" role="img" aria-label="Comparación A y B por actividad y unidad"><title>Comparación A y B por actividad y unidad</title><rect width="${width}" height="${height}" fill="#142238"/><text x="0" y="18" fill="#edf4ff" font-size="13" font-weight="bold">Comparación A / B · actividad y unidad</text>${bars}${footer.map((line,index)=>`<text x="0" y="${65+rows.length*rowHeight+index*13}" fill="#a5b8d2" font-size="9">${escapeHtml(line)}</text>`).join('')}</svg>`;
-  container.innerHTML=svg;S.charts.comparison={svg,title:'Comparación A y B',data:rows,unit:'unidades'};
+function renderQualityFailures(){const data=S.quality,rows=data.detailed_failures || [];
+  $('quality-failures-note').textContent=`${fmt(rows.length)} de ${fmt(data.failure_count ?? rows.length)} hallazgos mostrados. Se conserva el texto registrado; no se asigna severidad automáticamente.`;
+  $('quality-failures-table').innerHTML=table(['Serie del medidor','Fallo informado','Fecha de trabajo','Responsable técnico','Inspección','Resultado'],rows.map((row)=>[`<strong class="mono">${escapeHtml(row.serial || 'Sin serie informada')}</strong>`,escapeHtml(row.failure),escapeHtml(prettyDate(row.work_date)),personCell(row.responsible_name,row.responsible_username),escapeHtml(row.inspection_type || 'Sin informar'),`${escapeHtml(row.result || 'Sin resultado')}${row.outside_tolerance?'<small class="danger-text">Fuera de tolerancia</small>':''}`]),'No se informaron fallos en estas revisiones.');
+  $('quality-failures-table').querySelector('table')?.classList.add('analytics-table','quality-fault-table');
+  if(data.failure_has_more){const button=document.createElement('button');button.id='quality-failures-more';button.className='btn secondary';button.textContent='Mostrar más hallazgos';button.onclick=()=>busy(button,async()=>{const query=new URLSearchParams(S.qualityQuery);query.set('failure_offset',String(rows.length));const more=await api(`/api/calidad?${query}`);S.quality.detailed_failures=[...rows,...more.detailed_failures];S.quality.failure_has_more=more.failure_has_more;renderQualityFailures();});$('quality-failures-table').append(button);}
 }
+function comparisonChart(data,filterContext=comparisonFilterContext()){
+  const rows=data.rows || [];if(!rows.length)return clearChart('chart-comparison','No hay producción en los períodos elegidos.');
+  const id='chart-comparison',width=chartWidth(id),groups=new Map();for(const row of rows){if(!groups.has(row.unit))groups.set(row.unit,[]);groups.get(row.unit).push(row);}
+  let body='',offset=39;
+  for(const [unit,allRows] of groups){const shown=allRows.slice(0,10),left=49,right=width-16,top=offset+36,bottom=offset+224,max=niceMax(Math.max(...shown.flatMap((r)=>[r.a,r.b]))),slot=(right-left)/shown.length,bw=Math.min(36,slot*.32);
+    body+=`<text x="12" y="${offset+12}" fill="#a5c8ec" font-size="11" font-weight="bold">${escapeHtml(unit)} · A referencia / B comparado</text>`;
+    for(let i=0;i<=4;i++){const value=max*i/4,yy=bottom-value/max*(bottom-top);body+=`<line x1="${left}" x2="${right}" y1="${yy}" y2="${yy}" stroke="#2c415b" stroke-dasharray="3 4"/><text x="${left-8}" y="${yy+4}" text-anchor="end" fill="#a8bcd5" font-size="10">${fmt(value)}</text>`;}
+    body+=shown.map((row,i)=>{const x=left+slot*(i+.5),name=[row.responsible_name,row.activity_name].filter(Boolean).join(' · '),lines=chartFooter(name,Math.max(6,Math.floor(slot/5.9))).slice(0,3);return ['a','b'].map((period,j)=>{const value=Number(row[period])||0,h=value/max*(bottom-top),tip=`${name} · Período ${period.toUpperCase()}: ${fmt(value)} ${unit}`;return `<g ${chartTip(tip,`data-value="${value}" data-series="${period.toUpperCase()}" data-category="${escapeHtml(name)}"`)}><title>${escapeHtml(tip)}</title><rect x="${x+(j?2:-bw-2)}" y="${bottom-h}" width="${bw}" height="${Math.max(h,.5)}" rx="2" fill="${j?CHART_COLORS.b:CHART_COLORS.a}"/><text x="${x+(j?bw/2+2:-bw/2-2)}" y="${bottom-h-7}" text-anchor="middle" fill="${j?'#ffd39e':'#b8d8ff'}" font-size="${shown.length>6?9:11}">${fmt(value)}</text></g>`;}).join('')+lines.map((line,j)=>`<text x="${x}" y="${bottom+19+j*12}" text-anchor="middle" fill="#bacce3" font-size="9">${escapeHtml(line)}</text>`).join('');}).join('');
+    if(allRows.length>10)body+=`<text x="12" y="${bottom+67}" fill="#a6bdd6" font-size="9">10 de ${allRows.length} filas representadas; la tabla conserva todas.</text>`;offset+=310;
+  }
+  const filters=filterContext;installChart(id,'Comparación de cantidades A / B',body,width,offset,`A referencia: ${data.period_a.from} al ${data.period_a.to} · B comparado: ${data.period_b.from} al ${data.period_b.to} · ${filters} · Ejes separados por unidad; escala compartida dentro de cada panel.`,()=>comparisonChart(data,filterContext),rows,'por unidad');
+}
+function comparisonFilterContext(){const labels=[['filter-activity','Actividad'],['filter-responsible','Responsable'],['filter-sap','SAP'],['filter-voltage','Voltaje'],['filter-brand','Marca'],['filter-model','Modelo'],['filter-condition','Condición']];return [S.user?.role==='tecnico'?'Producción propia':'Laboratorio de Medidas',...labels.filter(([id])=>$(id).value && (id!=='filter-responsible' || isManager())).map(([id,label])=>`${label}: ${$(id).tagName==='SELECT'?$(id).selectedOptions[0]?.textContent:$(id).value}`)].join(' · ');}
 
 function setComparisonDefaults() {
   const day=today(),end=new Date(`${day}T12:00:00Z`),start=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth(),1,12)),previousEnd=new Date(start.valueOf()-86400000),duration=Math.round((end-start)/86400000),previousStart=new Date(previousEnd.valueOf()-duration*86400000);
@@ -226,24 +326,48 @@ function setComparisonDefaults() {
 }
 function comparisonQuery() {
   const query=new URLSearchParams(filterQuery());query.delete('desde');query.delete('hasta');
-  for(const [name,id] of [['a_desde','comparison-a-from'],['a_hasta','comparison-a-to'],['b_desde','comparison-b-from'],['b_hasta','comparison-b-to'],['granularity','comparison-granularity']])query.set(name,$(id).value);
+  for(const [name,id] of [['a_desde','comparison-a-from'],['a_hasta','comparison-a-to'],['b_desde','comparison-b-from'],['b_hasta','comparison-b-to'],['granularity','comparison-granularity'],['group_by','comparison-group-by']])query.set(name,$(id).value);
   if(!query.get('a_desde') || !query.get('a_hasta') || !query.get('b_desde') || !query.get('b_hasta'))throw new Error('Completa las cuatro fechas de los períodos.');
   if(query.get('a_desde')>query.get('a_hasta') || query.get('b_desde')>query.get('b_hasta'))throw new Error('La fecha inicial de cada período debe ser anterior o igual a su fecha final.');
   return query;
 }
-async function loadComparison() {
+function deltaClass(value,invert=false){return value===null || value===undefined || value===0?'neutral':(value>0)!==invert?'positive':'negative';}
+function comparisonStatus(row){if(row.a===0 && row.b>0)return signalBadge('amarillo','Sin base de comparación');if(row.delta>0)return signalBadge('verde','Mayor producción');if(row.delta<0)return signalBadge('rojo','Menor producción');return signalBadge('amarillo','Sin variación');}
+function comparisonTable(data){
+  const group=data.group_by || $('comparison-group-by').value,personal=group!=='activity',rows=data.rows || [],identity=personal?['Técnico / colaborador','Actividad','Unidad']:['Actividad','Unidad'];
+  if(!rows.length)return empty('Ninguna actividad tiene registros en estos períodos y filtros.','Sin producción para comparar');
+  const header=`<thead><tr class="table-group"><th colspan="${identity.length}" scope="colgroup">DESGLOSE DEL INFORME</th><th colspan="4" scope="colgroup">PRODUCTIVIDAD · B − A</th><th colspan="4" scope="colgroup">CALIDAD DE LAS REVISIONES</th><th rowspan="2" scope="col">Estado de producción</th></tr><tr>${identity.map((h)=>`<th scope="col">${h}</th>`).join('')}<th scope="col">Cantidad A<br><small>Referencia</small></th><th scope="col">Cantidad B<br><small>Comparado</small></th><th scope="col">Variación<br>absoluta</th><th scope="col">Crecimiento<br>(B − A) / A</th><th scope="col">Aprobación<br>A / B</th><th scope="col">Rechazo A<br><small>No aptas / evaluadas</small></th><th scope="col">Rechazo B<br><small>No aptas / evaluadas</small></th><th scope="col">Cambio rechazo<br><small>B − A · puntos porcentuales</small></th></tr></thead>`;
+  const body=rows.map((row)=>{const rejectionDelta=row.rejection_rate_delta_pp ?? (row.rejection_rate_a!==null && row.rejection_rate_a!==undefined && row.rejection_rate_b!==null && row.rejection_rate_b!==undefined?row.rejection_rate_b-row.rejection_rate_a:null),cells=[];
+    if(personal)cells.push(personCell(row.responsible_name,row.responsible_username));
+    cells.push(`<strong>${escapeHtml(row.activity_name || 'Actividades del alcance')}</strong>${row.activity_ids?.length>1?`<small>${fmt(row.activity_ids.length)} actividades con la misma unidad</small>`:''}`,escapeHtml(row.unit),`<strong>${fmt(row.a)}</strong>`,`<strong>${fmt(row.b)}</strong>${sparkline(row.trend_b,row.unit)}`,`<strong>${escapeHtml(signed(row.delta))}</strong>`,escapeHtml(variation(row.percent,row.percent_state)),`${percent(row.approval_rate_a)} / ${percent(row.approval_rate_b)}`,`${percent(row.rejection_rate_a)}${row.evaluated_a?`<small>${fmt(row.rejected_a)} / ${fmt(row.evaluated_a)}</small>`:''}`,`${percent(row.rejection_rate_b)}${row.evaluated_b?`<small>${fmt(row.rejected_b)} / ${fmt(row.evaluated_b)}</small>`:''}`,rejectionDelta===null?'—':`${signed(rejectionDelta)} pp`,comparisonStatus(row));
+    const deltaIndex=identity.length+2,percentIndex=identity.length+3,rejectionIndex=identity.length+7;
+    return `<tr data-comparison-unit="${escapeHtml(row.unit)}" data-unit="${escapeHtml(row.unit)}" data-responsible="${escapeHtml(row.responsible_id ?? '')}" data-activity="${escapeHtml(row.activity_id ?? '')}">${cells.map((cell,i)=>`<td${i===deltaIndex || i===percentIndex?` class="delta-cell ${deltaClass(row.delta)}"`:i===rejectionIndex?` class="delta-cell ${deltaClass(rejectionDelta,true)}"`:''}>${cell}</td>`).join('')}</tr>`;
+  }).join('');
+  const units=[...new Set([...Object.keys(data.period_a.totals_by_unit || {}),...Object.keys(data.period_b.totals_by_unit || {})])];
+  const totals=units.map((unit)=>{const a=data.period_a.totals_by_unit?.[unit] || 0,b=data.period_b.totals_by_unit?.[unit] || 0,delta=b-a,pct=a?(b-a)/a*100:b?null:0;return `<tr class="table-total"><th scope="row" colspan="${identity.length-1}">TOTAL · ${escapeHtml(unit)}</th><td>${escapeHtml(unit)}</td><td>${fmt(a)}</td><td>${fmt(b)}</td><td class="delta-cell ${deltaClass(delta)}">${signed(delta)}</td><td class="delta-cell ${deltaClass(delta)}">${variation(pct,a===0 && b>0?'sin_base':'')}</td><td colspan="5">Total de cantidad en esta unidad · tasas detalladas por fila</td></tr>`;}).join('');
+  return `<div class="table-wrap" tabindex="0" aria-label="Tabla comparativa desplazable"><table class="data-table analytics-table comparison-data-table">${header}<tbody>${body}</tbody><tfoot>${totals}</tfoot></table></div>`;
+}
+async function loadComparison(){
+  updateFilterSummary();
+  if(isVisitor())$('comparison-group-by').value='activity';
+  $('comparison-group-by').querySelectorAll('option').forEach((option)=>{option.disabled=isVisitor() && option.value!=='activity';});
   const query=comparisonQuery(),data=await api(`/api/comparativas?${query}`),summary=data.summary;clearError($('comparison-error'));
-  $('comparison-metrics').innerHTML=metricCards([
-    ['Registros del período A',summary.records_a,'Base de la comparación'],['Registros del período B',summary.records_b,'Período comparado'],
-    ['Variación absoluta',signed(summary.delta_records),'Registros de B − registros de A'],['Variación porcentual',variation(summary.percent_records,summary.percent_state),'(B − A) / A × 100']]);
-  $('comparison-periods').textContent=`A: ${prettyDate(data.period_a.from)} — ${prettyDate(data.period_a.to)} (${fmt(data.period_a.days)} días). B: ${prettyDate(data.period_b.from)} — ${prettyDate(data.period_b.to)} (${fmt(data.period_b.days)} días). ${data.period_a.days!==data.period_b.days?'Los períodos tienen distinta duración; las cantidades no se normalizan por día.':'Ambos períodos tienen la misma duración.'}`;
-  $('comparison-table').innerHTML=table(['Actividad','Unidad','Cantidad A','Cantidad B','Variación absoluta','Variación %','Registros A / B'],(data.rows || []).map((row)=>[
-    `<strong>${escapeHtml(row.activity_name)}</strong>`,escapeHtml(row.unit),fmt(row.a),fmt(row.b),`<span class="numeric-change ${row.delta<0?'negative':row.delta>0?'positive':''}">${escapeHtml(signed(row.delta))}</span>`,escapeHtml(variation(row.percent,row.percent_state)),`${fmt(row.records_a)} / ${fmt(row.records_b)}`]),'Ninguna actividad tiene registros en estos períodos y filtros.');
+  $('comparison-metrics').innerHTML=metricCards([['Registros en referencia A',summary.records_a,'Eventos de actividad, no cantidades'],['Registros en comparado B',summary.records_b,'Eventos de actividad, no medidores únicos'],['Variación de registros',signed(summary.delta_records),'Registros de B − registros de A',deltaClass(summary.delta_records)],['Crecimiento de registros',variation(summary.percent_records,summary.percent_state),'(B − A) / A × 100']]);
+  $('comparison-periods').textContent=`A · referencia: ${prettyDate(data.period_a.from)} — ${prettyDate(data.period_a.to)} (${fmt(data.period_a.days)} días). B · comparado: ${prettyDate(data.period_b.from)} — ${prettyDate(data.period_b.to)} (${fmt(data.period_b.days)} días). ${data.period_a.days!==data.period_b.days?'Los períodos tienen distinta duración; se comparan cantidades brutas, sin normalizar por día.':'Ambos períodos tienen la misma duración.'}`;
+  const group=data.group_by || $('comparison-group-by').value;$('comparison-table-title').textContent=({activity:'Comparación por actividad y unidad',technician:'Comparación por técnico y unidad',technician_activity:'Comparación por técnico y actividad'})[group] || 'Comparación de producción';
+  $('comparison-table').innerHTML=comparisonTable(data);
   const seriesTable=(rows)=>table(['Intervalo','Registros','Cantidades por unidad'],rows.map((row)=>[escapeHtml(row.label),fmt(row.records),Object.entries(row.totals_by_unit || {}).map(([unit,value])=>`${fmt(value)} ${escapeHtml(unit)}`).join('<br>') || '—']));
   $('comparison-series-a').innerHTML=seriesTable(data.series_a || []);$('comparison-series-b').innerHTML=seriesTable(data.series_b || []);
   S.comparison=data;comparisonChart(data);
   for(const format of ['xlsx','pdf'])$(`comparison-export-${format}`).href=`/api/comparativas.${format}?${query}`;
+  refreshTemplateStatus();
 }
+const TEMPLATE_IDS=['comparison-a-from','comparison-a-to','comparison-b-from','comparison-b-to','comparison-granularity','comparison-group-by','filter-activity','filter-responsible','filter-sap','filter-voltage','filter-brand','filter-model','filter-condition'];
+function templateKey(){return `lab-report-template-v1-${S.user?.id}`;}
+function readReportTemplate(){try{return JSON.parse(localStorage.getItem(templateKey()) || 'null');}catch(_){return null;}}
+function refreshTemplateStatus(){const saved=readReportTemplate();$('comparison-load-template').disabled=!saved;$('comparison-template-status').textContent=saved?`Plantilla guardada ${prettyTime(saved.saved_at)} · solo rangos y filtros en este navegador.`:'La plantilla guarda rangos y filtros en este navegador.';}
+function saveReportTemplate(){comparisonQuery();const values=Object.fromEntries(TEMPLATE_IDS.filter((id)=>id!=='filter-responsible' || isManager()).map((id)=>[id,$(id).value]));try{localStorage.setItem(templateKey(),JSON.stringify({version:1,saved_at:new Date().toISOString(),values}));refreshTemplateStatus();toast('Plantilla de rangos y filtros guardada.');}catch(_){throw new Error('Este navegador no permite guardar la plantilla. Los registros no se modificaron.');}}
+async function loadReportTemplate(){const saved=readReportTemplate();if(!saved?.values)return toast('Todavía no tienes una plantilla guardada.','warning');for(const id of TEMPLATE_IDS){if(id==='filter-responsible'&&!isManager())continue;if(id==='comparison-group-by'&&isVisitor()){$(id).value='activity';continue;}if(typeof saved.values[id]==='string')$(id).value=saved.values[id];}await loadComparison();toast('Plantilla aplicada al informe.');}
 
 function progress(value) { if(value===null || value===undefined) return '<span class="muted">Sin meta</span>'; const n=Number(value)||0;return `<div class="progress-cell"><progress max="100" value="${Math.min(100,Math.max(0,n))}" aria-label="Cumplimiento ${escapeHtml(fmt(n))} por ciento"></progress><strong>${fmt(n)}%</strong></div>`; }
 function downloadBlob(blob,name) { const link=document.createElement('a');const url=URL.createObjectURL(blob);link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1500); }
@@ -432,21 +556,25 @@ async function confirmImport() {
 async function loadReceipts() {
   $('new-receipt').classList.toggle('hidden',!activeActivities().some((a)=>a.id==='recepcion'));
   const query=new URLSearchParams(filterQuery());query.delete('desde');query.delete('hasta');
-  const data=await api(`/api/ordenes?${query}`);S.orders=data.orders || [];renderReceiptOrders();
+  const data=await api(`/api/ordenes?${query}`);S.orders=data.orders || [];S.receiptSummary=data.summary || {};renderReceiptOrders();
 }
 function renderReceiptOrders() {
-  const orders=S.orders || [],scope=$('receipts-state').value;
+  const orders=S.orders || [],scope=$('receipts-state').value,summary=S.receiptSummary || {};
   $('receipts-metrics').innerHTML=metricCards([
-    ['Órdenes en seguimiento',orders.length,'Órdenes dentro del alcance seleccionado'],
-    ['Pendientes activos',orders.filter((o)=>o.state==='pendiente' || o.state==='por_confirmar').length,'Entregas aún por completar'],
-    ['Alertas',orders.filter((o)=>o.signal==='rojo' && o.state!=='cerrada').length,'Vencimiento o recepción en exceso'],
-    ['Lotes cerrados',orders.filter((o)=>o.state==='cerrada').length,'Con acta de cierre conservada']]);
+    ['Cantidad esperada',summary.expected_total ?? orders.filter((o)=>o.expected!==null).reduce((sum,o)=>sum+o.expected,0),'Medidores · órdenes con esperado confirmado'],
+    ['Cantidad recibida',summary.received_total ?? orders.reduce((sum,o)=>sum+o.received,0),'Medidores · todas las entregas acumuladas'],
+    ['Cantidad pendiente',summary.pending_total ?? orders.reduce((sum,o)=>sum+(o.pending || 0),0),'Medidores · solo esperado confirmado'],
+    ['Avance de recepción',percent(summary.fulfillment_pct),'Recibido hasta el esperado / esperado confirmado'],
+    ['Órdenes con alertas',orders.filter((o)=>o.signal==='rojo' && o.state!=='cerrada').length,'Vencimiento, exceso o conflicto de proceso'],
+    ['Órdenes por confirmar',summary.unknown_orders ?? orders.filter((o)=>o.expected===null).length,'Sin cantidad esperada; no se asume saldo cero']]);
+  $('receipts-scope-note').textContent=`${receiptContext()}. ${fmt(orders.length)} órdenes en este alcance; ${fmt(orders.filter((o)=>o.state==='cerrada').length)} cerradas. Los contadores resumen todos los estados; el selector inferior solo cambia las filas. El avance limita cada orden al esperado; los excesos se muestran en su fila.`;
   const visible=orders.filter((o)=>scope==='all' || scope==='active' && o.state!=='cerrada' || scope==='overdue' && o.signal==='rojo' && o.state!=='cerrada' || scope==='closed' && o.state==='cerrada' || scope==='complete' && o.state==='completa');
-  $('receipts-table').innerHTML=table(['Proceso / orden','SAP','Recibido / esperado','Pendiente','Seguimiento','Entregas','Acciones'],visible.map((o)=>[
-    `<strong class="mono">${escapeHtml(o.process)}</strong><small>${escapeHtml(o.order_number)}</small>`,escapeHtml(o.sap),`${fmt(o.received)} / ${o.expected===null?'Por confirmar':fmt(o.expected)}${o.own_received===undefined?'':`<small>Tu aporte: ${fmt(o.own_received)}</small>`}`,
-    o.pending===null?'Por confirmar':`${fmt(o.pending)}${o.excess?`<small class="danger-text">Exceso: ${fmt(o.excess)}</small>`:''}`,
+  $('receipts-table').innerHTML=table(['Proceso / orden','Código SAP','Cantidad esperada','Cantidad recibida','Avance','Pendiente / %','Seguimiento y fecha','Entregas','Acciones'],visible.map((o)=>[
+    `<strong class="mono">${escapeHtml(o.process)}</strong><small>${escapeHtml(o.order_number)}</small>`,escapeHtml(o.sap),o.expected===null?'Por confirmar':fmt(o.expected),`${fmt(o.received)}${o.own_received===undefined?'':`<small>Tu aporte: ${fmt(o.own_received)}</small>`}`,orderProgress(o),
+    o.pending===null?'Por confirmar':`${fmt(o.pending)}<small>${o.expected?percent(o.pending/o.expected*100):'Sin base'} pendiente</small>${o.excess?`<small class="danger-text">Exceso: ${fmt(o.excess)}</small>`:''}`,
     `${signalBadge(o.signal,orderStateLabel(o))}${o.due_date?`<small>Fecha límite: ${escapeHtml(prettyDate(o.due_date))}</small>`:''}`,fmt(o.deliveries),
     `<button class="mini-button" data-order-detail="${o.id}">Ver detalle</button>${isManager() && o.state!=='cerrada'?`<button class="mini-button" data-order-edit="${o.id}">Editar orden</button>`:''}${o.state!=='cerrada' && activeActivities().some((a)=>a.id==='recepcion')?`<button class="mini-button" data-order-delivery="${o.id}">＋ Entrega</button>`:''}${isManager() && o.state==='completa' && !o.process_conflict && !o.excess?`<button class="mini-button" data-order-close="${o.id}">Cerrar lote</button>`:''}${isManager() && o.state==='cerrada'?`<button class="mini-button" data-order-reopen="${o.id}">Reabrir</button>`:''}`]),'No hay órdenes para este estado. Puedes crear una orden o registrar la primera entrega.');
+  $('receipts-table').querySelector('table')?.classList.add('analytics-table','receipts-analysis-table');
 }
 function orderStateLabel(order) {return order.state==='cerrada'?'Cerrada':order.process_conflict?'Proceso duplicado: revisar':order.excess?'Exceso recibido':order.overdue?'Vencida':({completa:'Completa, lista para cerrar',pendiente:'Pendiente',por_confirmar:'Cantidad por confirmar'}[order.state] || order.state);}
 function createOrder() {
@@ -521,7 +649,15 @@ async function loadAccount() {
 }
 
 function bindEvents() {
-  let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(!S.user)return;if(S.view==='comparison' && S.comparison)comparisonChart(S.comparison);else if(['dashboard','quality'].includes(S.view)){const keys=S.view==='dashboard'?['activity','day','voltage','collaborator']:['quality-results','quality-failures'];for(const key of keys){const chart=S.charts[key];if(chart)svgChart(`chart-${key}`,chart.data,chart.title,chart.unit);}}},180);});
+  let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(!S.user)return;const visible=$(`view-${S.view}`);for(const [key,chart] of Object.entries(S.charts)){const node=$(`chart-${key}`);if(node && visible?.contains(node))chart.redraw?.();}},180);});
+  const tooltip=$('chart-tooltip');
+  function showChartTooltip(target,event){const text=target.dataset.chartTooltip;if(!text)return;tooltip.textContent=text;tooltip.classList.remove('hidden');const rect=target.getBoundingClientRect(),x=event?.clientX ?? rect.left+rect.width/2,y=event?.clientY ?? rect.top;tooltip.style.left=`${Math.max(8,Math.min(window.innerWidth-tooltip.offsetWidth-8,x+12))}px`;tooltip.style.top=`${Math.max(8,Math.min(window.innerHeight-tooltip.offsetHeight-8,y-tooltip.offsetHeight-12))}px`;}
+  document.addEventListener('pointerover',(event)=>{const target=event.target.closest?.('[data-chart-tooltip]');if(target)showChartTooltip(target,event);});
+  document.addEventListener('pointermove',(event)=>{const target=event.target.closest?.('[data-chart-tooltip]');if(target)showChartTooltip(target,event);});
+  document.addEventListener('pointerout',(event)=>{if(event.target.closest?.('[data-chart-tooltip]') && !event.relatedTarget?.closest?.('[data-chart-tooltip]'))tooltip.classList.add('hidden');});
+  document.addEventListener('focusin',(event)=>{const target=event.target.closest?.('[data-chart-tooltip]');if(target)showChartTooltip(target);});
+  document.addEventListener('focusout',(event)=>{if(event.target.closest?.('[data-chart-tooltip]'))tooltip.classList.add('hidden');});
+  document.addEventListener('keydown',(event)=>{if(event.key==='Escape')tooltip.classList.add('hidden');});
   document.addEventListener('click',(event)=>{
     const view=event.target.closest('[data-view]');if(view)navigate(view.dataset.view);
     const chart=event.target.closest('[data-export-chart]');if(chart)exportChart(chart.dataset.exportChart,chart.dataset.format,chart);
@@ -542,8 +678,8 @@ function bindEvents() {
   $('logout-button').onclick=()=>busy($('logout-button'),async()=>{await api('/api/logout',{});S.user=null;S.csrf='';$('password-form').reset();showAuth(false);});
   $('menu-toggle').onclick=()=>setMenu(!document.body.classList.contains('menu-open'));$('sidebar-backdrop').onclick=()=>setMenu(false);$('account-shortcut').onclick=()=>navigate('account');$('quick-capture').onclick=()=>navigate('capture');
   $('dialog-close').onclick=closeDialog;$('app-dialog').addEventListener('click',(e)=>{if(e.target===$('app-dialog')){const r=$('app-dialog').getBoundingClientRect();if(e.clientX<r.left || e.clientX>r.right || e.clientY<r.top || e.clientY>r.bottom)closeDialog();}});
-  $('toggle-filters').onclick=()=>{const collapsed=$('global-filters').classList.toggle('filter-collapsed');$('toggle-filters').setAttribute('aria-expanded',String(!collapsed));};
-  $('filter-form').onsubmit=(event)=>{event.preventDefault();if(!['comparison','receipts'].includes(S.view) && $('filter-from').value && $('filter-to').value && $('filter-from').value>$('filter-to').value)return toast('La fecha inicial debe ser anterior a la final.','warning');S.page=1;navigate(S.view);};
+  $('toggle-filters').onclick=()=>setFiltersCollapsed(!$('global-filters').classList.contains('filter-collapsed'));
+  $('filter-form').onsubmit=(event)=>{event.preventDefault();if(!['comparison','receipts'].includes(S.view) && $('filter-from').value && $('filter-to').value && $('filter-from').value>$('filter-to').value)return toast('La fecha inicial debe ser anterior a la final.','warning');S.page=1;setFiltersCollapsed(true);navigate(S.view);};
   $('clear-filters').onclick=()=>{$('filter-form').reset();S.page=1;navigate(S.view);};
   $('capture-activity').onchange=()=>{renderCaptureFields();storePin();};$('pin-activity').onchange=storePin;
   $('capture-form').onsubmit=(event)=>{event.preventDefault();busy($('capture-submit'),()=>saveCapture(),$('capture-error'));};
@@ -552,6 +688,8 @@ function bindEvents() {
   $('create-backup').onclick=()=>busy($('create-backup'),async()=>{const result=await api('/api/backup',{});toast(`Respaldo creado. ${result.message || 'Se guardó en la carpeta de respaldos de esta instalación.'}`);});
   $('import-activity').onchange=updateTemplateLinks;$('import-file').onchange=()=>{S.preview=null;$('import-preview').classList.add('hidden');};$('import-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,previewImport,$('import-error'));};
   $('create-order').onclick=createOrder;$('receipts-state').onchange=renderReceiptOrders;
+  $('dashboard-granularity').onchange=()=>busy(null,loadDashboard);$('dashboard-series').onchange=renderDashboardTrend;
+  $('comparison-save-template').onclick=()=>busy($('comparison-save-template'),saveReportTemplate);$('comparison-load-template').onclick=()=>busy($('comparison-load-template'),loadReportTemplate,$('comparison-error'));
   $('quality-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,loadQuality);};
   $('comparison-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,loadComparison,$('comparison-error'));};
   $('new-receipt').onclick=async()=>{await navigate('capture');$('capture-activity').value='recepcion';renderCaptureFields();};
@@ -565,7 +703,7 @@ function bindEvents() {
 async function init() {
   bindEvents();const day=today();$('filter-from').value=`${day.slice(0,7)}-01`;$('filter-to').value=day;$('capture-date').value=day;
   setComparisonDefaults();
-  if(window.matchMedia('(max-width:760px)').matches){$('global-filters').classList.add('filter-collapsed');$('toggle-filters').setAttribute('aria-expanded','false');}
+  setFiltersCollapsed(true);
   try {const me=await api('/api/me');S.demo=Boolean(me.demo);S.publicDemo=Boolean(me.public_demo);S.setup=Boolean(me.setup_required);if(me.logged)await enterApp(me);else showAuth();}
   catch(error){showAuth(false);showError($('auth-error'),error);}
 }

@@ -797,7 +797,42 @@ def _save_goal(db, user, data):
     return {"ok": True, "id": cursor.lastrowid}
 
 
+def _dashboard_trend(events, query):
+    """Curvas temporales independientes por actividad y unidad, con ceros reales."""
+    # Importación diferida: analytics reutiliza los permisos de production.
+    from analytics import _bucket, _buckets, _granularity
+    granularity = _granularity({"granularity": query.get("granularity") or "semanal"})
+    today = datetime.now(timezone(timedelta(hours=-4))).date().isoformat()
+    first = date.fromisoformat(query.get("desde") or min((e["work_date"] for e in events), default=query.get("hasta") or today))
+    last = date.fromisoformat(query.get("hasta") or max((e["work_date"] for e in events), default=first.isoformat()))
+    # Un solo extremo abierto puede quedar fuera del último dato disponible.
+    # En ese caso el rango vacío se representa en la fecha pedida, no al revés.
+    if first > last:
+        if query.get("desde") and query.get("hasta"):
+            raise ApiError("La fecha Desde no puede ser posterior a Hasta.")
+        first = last = first if query.get("desde") else last
+    buckets = _buckets(first, last, granularity)
+    grouped, counts = {}, Counter()
+    for event in events:
+        key = (event["activity_id"], event["unit"])
+        item = grouped.setdefault(key, {"activity_name": event["activity_name"], "quantities": Counter(), "records": Counter()})
+        bucket = _bucket(date.fromisoformat(event["work_date"]), granularity)[0]
+        item["quantities"][bucket] += event["quantity"]
+        item["records"][bucket] += 1
+        counts[bucket] += 1
+    series = []
+    for (activity_id, unit), item in sorted(grouped.items()):
+        points = [{**bucket, "date": bucket["from"], "value": item["quantities"][bucket["label"]],
+                   "records": item["records"][bucket["label"]]} for bucket in buckets]
+        series.append({"id": f"{activity_id}:{unit}", "activity_id": activity_id,
+                       "activity_name": item["activity_name"], "unit": unit,
+                       "total": sum(point["value"] for point in points), "points": points})
+    return {"granularity": granularity, "from": first.isoformat(), "to": last.isoformat(), "series": series,
+            "records": [{**bucket, "date": bucket["from"], "value": counts[bucket["label"]]} for bucket in buckets]}
+
+
 def _dashboard(db, user, query):
+    from analytics import _quality_summary
     valid_query = {**query, "state": "valido"}
     events = _events(db, user, valid_query, allow_visitor=True)
     reviews = [event for event in events if event["activity_id"] == "revision"]
@@ -821,7 +856,7 @@ def _dashboard(db, user, query):
     receipts = _receipts(db, user, query, allow_visitor=True)
     aggregate = lambda counter: [{"label": label, "value": value} for label, value in counter.most_common()]
     return {"event_count": len(events), "review_count": len(reviews), "identified_unique": len(identified),
-            "reentries": len(reviews) - len(unique_reviews), "totals_by_unit": dict(totals),
+            "reentries": sum(bool(event["data"].get("serie")) for event in reviews) - len(unique_reviews), "totals_by_unit": dict(totals),
             "by_activity": [{"label": name, "value": value, "unit": unit} for (name, unit), value in by_activity.most_common()],
             "by_voltage": aggregate(by_voltage), "by_day": [{"label": day, "value": value} for day, value in sorted(by_day.items())],
             "by_collaborator": [] if user["role"] == "visitante" else aggregate(by_person),
@@ -831,7 +866,11 @@ def _dashboard(db, user, query):
             "goals_summary": {"total": len(goals), "cumplidas": goal_states["cumplida"], "vencidas": goal_states["vencida"],
                               "en_progreso": goal_states["en_progreso"], "pendientes": goal_states["pendiente"]},
             "time_minutes": float(duration), "minutes_per_unit": round(float(duration) / duration_qty, 2) if duration_qty else None,
-            "chart_unit": "registros", "reentries_scope": "revisiones adicionales dentro del período seleccionado"}
+            "chart_unit": "registros", "reentries_scope": "revisiones adicionales dentro del período seleccionado",
+            "summary_quality": _quality_summary(reviews), "trend": _dashboard_trend(events, query),
+            "receipt_summary": operational.receipt_summary(receipts),
+            "batch_progress": [] if user["role"] == "visitante" else receipts,
+            "updated_at": now()}
 
 
 def _row_payload(db, actor, activity_id, row):

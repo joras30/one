@@ -314,6 +314,7 @@ def _order_summary(db, row, user, cutoff=""):
               "closed_at": row["closed_at"], "scope": "orden"}
     result["administrative_state"] = row["state"]
     result["as_of"] = cutoff or today
+    result["progress_pct"] = round(received / expected * 100, 6) if expected else None
     if user["role"] == "tecnico":
         result["own_received"] = sum(e["quantity"] for e in events if e["responsible_id"] == user["id"])
     return result
@@ -349,7 +350,30 @@ def list_orders(db, user, query, allow_visitor=False):
         if query.get("state") and query["state"] != item["state"]:
             continue
         result.append(item)
-    return {"orders": result}
+    return {"orders": result, "summary": receipt_summary(result)}
+
+
+def receipt_summary(orders):
+    """Saldos por orden, sin compensar faltantes con excedentes de otro proceso.
+
+    Las órdenes sin cantidad esperada participan en recibido, pero no inventan
+    un denominador para avance ni convierten su pendiente desconocido en cero.
+    """
+    known = [order for order in orders if order["expected"] is not None]
+    expected = sum(order["expected"] for order in known)
+    received = sum(order["received"] for order in orders)
+    fulfilled = sum(min(order["received"], order["expected"]) for order in known)
+    unknown = len(orders) - len(known)
+    return {"order_count": len(orders), "expected_total": expected, "ordered": expected,
+            "received_total": received, "received_known_total": sum(order["received"] for order in known),
+            "pending_total": sum(order["pending"] for order in known),
+            "excess_total": sum(order["excess"] for order in known),
+            "unknown_orders": unknown, "expected_known": unknown == 0,
+            "completed_orders": sum(order["state"] in {"completa", "cerrada"} for order in orders),
+            "pending_orders": sum(order["pending"] is None or order["pending"] > 0 for order in orders),
+            "overdue_orders": sum(bool(order["overdue"]) for order in orders),
+            "fulfillment_pct": round(fulfilled / expected * 100, 6) if expected else None,
+            "scope": "historial acumulado al corte; esperado conocido; avance limitado por orden"}
 
 
 def receipts(db, user, query=None, allow_visitor=False):
