@@ -129,10 +129,11 @@ async function loadReferences() {
   $('sap-list').innerHTML=S.sap.filter((x)=>x.active).map((x)=>`<option value="${escapeHtml(x.code)}">${escapeHtml(x.voltage)} · ${escapeHtml(x.classification)}</option>`).join('');
 }
 async function enterApp(me) {
+  if(S.user?.id!==me.user.id){$('base-profile-card')?.remove();$('profile-avatar-editor')?.remove();S.users=[];}
   S.user=me.user; S.production=Boolean(me.production_mode); S.csrf=me.csrf; S.demo=Boolean(me.demo); S.publicDemo=Boolean(me.public_demo); $('auth-view').classList.add('hidden'); $('app-shell').classList.remove('hidden');
   $('account-name').textContent=S.user.name; $('account-role').textContent=roleNames[S.user.role] || S.user.role;
   $('account-avatar').textContent=S.user.name.split(/\s+/).slice(0,2).map((n)=>n[0]).join('').toUpperCase();
-  $('demo-badge').textContent=S.demo?'DATOS DE PRUEBA':'PRUEBA LOCAL'; $('environment-label').textContent=`${S.publicDemo?'Demostración pública':S.demo?'Demostración':'Versión de pruebas'} · ${me.version || '2.2'}`;
+  $('demo-badge').textContent=S.demo?'DATOS DE PRUEBA':S.production?'BASE LOCAL · FASE 1':'PRUEBA LOCAL'; $('environment-label').textContent=`${S.publicDemo?'Demostración pública':S.demo?'Demostración':S.production?'Instalación local':'Versión de pruebas'} · ${me.version || '2.2'}`;
   setRoleVisibility(); if(!S.user.must_change && !S.user.must_complete_profile) await loadReferences();
   if(S.user.must_change || S.user.must_complete_profile) { await navigate('account'); toast(S.user.must_change?'Elige tu contraseña personal para continuar.':'Completa tu perfil para continuar.','warning'); }
   else { $('comparison-group-by').value=isVisitor()?'activity':'technician_activity';await navigate(S.production?(S.user.role==='administrador'?'base':'account'):'dashboard'); }
@@ -645,7 +646,7 @@ function renderGoals(goals, compact=false) { const list=compact?goals.slice(0,5)
 async function loadGoals() { const data=await api('/api/metas');S.goals=data.goals || [];$('goals-table').innerHTML=renderGoals(S.goals);$('goals-hint').textContent=isManager()?'Cada avance corresponde a una actividad y unidad.':'Aquí encontrarás las metas asignadas a tu cuenta.';if(!$('goal-from').value)$('goal-from').value=today();if(!$('goal-to').value)$('goal-to').value=today();updateGoalUnit(); }
 function updateGoalUnit() {let wrap=$('goal-unit-wrap');if(!wrap){wrap=document.createElement('label');wrap.id='goal-unit-wrap';wrap.innerHTML='Unidad<select id="goal-unit"><option value="medidores">Medidores</option><option value="sellos">Sellos</option></select>';$('goal-form').querySelector('.form-grid').insertBefore(wrap,$('goal-form').querySelector('.field-action'));}wrap.classList.toggle('hidden',$('goal-activity').value!=='asignacion');}
 
-async function loadUsers() { const data=await api('/api/usuarios');S.users=data.users || []; $('users-table').innerHTML=table(['Colaborador','Usuario','Perfil','Actividades','Estado','Acciones'],S.users.map((u)=>[personCell(u.name,u.username,u.id),escapeHtml(u.username),escapeHtml(roleNames[u.role] || u.role),escapeHtml((u.activity_ids || []).map((id)=>S.activities.find((a)=>a.id===id)?.name || id).join(' · ') || 'Sin actividades'),badge(u.active?'Activo':'Inactivo',u.active?'good':'muted'),`${S.user.role==='administrador' || u.role==='tecnico'?`<button class="mini-button" data-edit-user="${u.id}">Editar</button>`:''}${u.role==='tecnico'?`<button class="mini-button" data-reset-user="${u.id}">Restablecer acceso</button>`:''}`])); }
+async function loadUsers() { const data=await api('/api/usuarios');S.users=data.users || []; $('users-table').innerHTML=table(['Colaborador','Usuario','Perfil','Actividades','Estado','Acciones'],S.users.map((u)=>[personCell(u.name,u.username,u.id),escapeHtml(u.username),escapeHtml(roleNames[u.role] || u.role),escapeHtml((u.activity_ids || []).map((id)=>S.activities.find((a)=>a.id===id)?.name || id).join(' · ') || 'Sin actividades'),badge(u.active?'Activo':'Inactivo',u.active?'good':'muted'),`${S.user.role==='administrador' || u.role==='tecnico'?`<button class="mini-button" data-edit-user="${u.id}">Editar</button>`:''}${u.role==='tecnico'?`<button class="mini-button" data-reset-user="${u.id}">Restablecer acceso</button>`:''}`])); if(S.production)LabFoundation.renderCards(S.users); }
 function editUser(user=null) {
   if(S.production)return LabFoundation.editUser(user);
   const roles=S.user.role==='administrador'?['tecnico','supervisor','administrador','visitante']:['tecnico'];
@@ -711,7 +712,7 @@ function bindEvents() {
     const orderCertificate=event.target.closest('[data-order-certificate]');if(orderCertificate)busy(orderCertificate,()=>showOrderCertificate(orderCertificate.dataset.orderCertificate));
   });
   $('auth-form').onsubmit=(event)=>{event.preventDefault();busy($('auth-submit'),async()=>{const credentials={username:$('auth-username').value.trim(),password:$('auth-password').value};if(S.setup){await api('/api/setup',{...credentials,name:$('auth-name').value.trim()});S.setup=false;}await api('/api/login',credentials);$('auth-password').value='';await enterApp(await api('/api/me'));},$('auth-error'));};
-  $('logout-button').onclick=()=>busy($('logout-button'),async()=>{await api('/api/logout',{});S.user=null;S.csrf='';window.LabTables?.resetAll();$('password-form').reset();showAuth(false);});
+  $('logout-button').onclick=()=>busy($('logout-button'),async()=>{await api('/api/logout',{});S.user=null;S.csrf='';S.users=[];$('base-profile-card')?.remove();$('profile-avatar-editor')?.remove();$('profile-details').replaceChildren();window.LabTables?.resetAll();$('password-form').reset();showAuth(false);});
   $('menu-toggle').onclick=()=>setMenu(!document.body.classList.contains('menu-open'));$('sidebar-backdrop').onclick=()=>setMenu(false);$('account-shortcut').onclick=()=>navigate('account');$('quick-capture').onclick=()=>navigate('capture');
   $('dialog-close').onclick=closeDialog;$('app-dialog').addEventListener('click',(e)=>{if(e.target===$('app-dialog')){const r=$('app-dialog').getBoundingClientRect();if(e.clientX<r.left || e.clientX>r.right || e.clientY<r.top || e.clientY>r.bottom)closeDialog();}});
   $('toggle-filters').onclick=()=>setFiltersCollapsed(!$('global-filters').classList.contains('filter-collapsed'));
@@ -721,7 +722,7 @@ function bindEvents() {
   $('capture-form').onsubmit=(event)=>{event.preventDefault();busy($('capture-submit'),()=>saveCapture(),$('capture-error'));};
   $('records-search').onclick=()=>{S.page=1;busy($('records-search'),loadRecords);};$('records-prev').onclick=()=>{if(S.page>1){S.page--;busy(null,loadRecords);}};$('records-next').onclick=()=>{if(S.page<S.pages){S.page++;busy(null,loadRecords);}};
   $('history-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,searchHistory);};$('new-activity').onclick=()=>editActivity();$('new-user').onclick=()=>editUser();
-  $('create-backup').onclick=()=>busy($('create-backup'),async()=>{const result=await api('/api/backup',{});toast(`Respaldo creado. ${result.message || 'Se guardó en la carpeta de respaldos de esta instalación.'}`);});
+  $('create-backup').onclick=()=>busy($('create-backup'),async()=>{if(S.production){await navigate('base');$('backup-now')?.focus();return;}const result=await api('/api/backup',{});toast(`Respaldo creado. ${result.message || 'Se guardó en la carpeta de respaldos de esta instalación.'}`);});
   $('import-activity').onchange=updateTemplateLinks;$('import-file').onchange=()=>{S.preview=null;$('import-preview').classList.add('hidden');};$('import-form').onsubmit=(event)=>{event.preventDefault();busy(event.submitter,previewImport,$('import-error'));};
   $('create-order').onclick=createOrder;$('receipts-state').onchange=renderReceiptOrders;
   $('dashboard-granularity').onchange=()=>busy(null,loadDashboard);$('dashboard-series').onchange=renderDashboardTrend;

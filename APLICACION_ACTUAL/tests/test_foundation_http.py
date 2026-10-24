@@ -64,5 +64,22 @@ class FoundationHTTPTests(HTTPFixture,unittest.TestCase):
         self.assertEqual(tech.login('91001',reset['temporary_password'])[0],200)
         self.assertTrue(self.result(tech,'/api/me')['user']['must_change'])
 
+    def test_local_backup_download_does_not_require_external_media_and_is_admin_only(self):
+        self.complete(self.admin,'admin',self.key)
+        backup=self.result(self.admin,'/api/base/backup-now',{})
+        self.assertEqual(backup['status'],'incompleto')
+        name=Path(backup['primary']).name
+        status,body,headers=self.admin.request('/api/base/backup-file?name='+name)
+        self.assertEqual(status,200)
+        self.assertTrue(body.startswith(b'SQLite format 3'))
+        self.assertEqual(body,Path(backup['primary']).read_bytes())
+        self.assertIn('attachment',headers['Content-Disposition'])
+        _,tech=self.create(self.admin,'91022')
+        self.result(tech,'/api/base/backup-file?name='+name,expected=403)
+        self.result(Client(self.base),'/api/base/backup-file?name='+name,expected=401)
+        for invalid in ('../laboratorio.db','%2E%2E%5Claboratorio.db','no-existe.db'):
+            status,_,_=self.admin.request('/api/base/backup-file?name='+invalid)
+            self.assertIn(status,(400,404))
+
 
 if __name__=='__main__':unittest.main()

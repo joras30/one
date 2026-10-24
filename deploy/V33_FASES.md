@@ -102,3 +102,14 @@ Las fotos sirven como referencia visual; los cálculos se basarán en los regist
 
 Después de esa revisión se solicita la validación de la fase 1. La captura real,
 el bloqueo de sellos y las bajas V33 se implementarán y validarán en la fase 2.
+
+## Ajuste 33.0.1 después de la prueba del solicitante
+
+- El cierre de sesión elimina el formulario personal de la pantalla. Al cambiar de cuenta se vuelve a consultar únicamente el perfil de su titular; una respuesta pendiente de otra cuenta se descarta. Los nuevos accesos conservan su propio nombre y puesto, y sus demás datos personales empiezan vacíos.
+- «Crear copia local ahora» funciona sin destinos externos. El mensaje indica la ruta y permite descargar la copia desde «Copias locales disponibles». «Protección dual incompleta» significa que faltan las dos copias externas; no significa que la copia local falló.
+- Las unidades F:, H:, I: y W: de un mismo servidor no prueban que sean medios físicos independientes. Para la protección dual se requieren dos ubicaciones independientes de la PC principal y entre sí; por ejemplo, una carpeta de red autorizada y un disco externo diferente. La aplicación no cambia permisos ni configura carpetas del servidor.
+- Galería de avatar: clásico, cabello corto y cabello largo, además de cuatro colores. El rol y sus permisos siguen asignados por administración; elegir dibujo no cambia el rol.
+- Fichas básicas de identificación en Mi cuenta y Colaboradores, con nombre, puesto, usuario y estado de acceso. Las fichas completas con métricas, jornadas, ranking y comparaciones siguen pendientes de la fase 3.
+- Mejor contraste en textos, información del perfil, controles y selector de avatar en modo claro.
+
+Para actualizar: cerrar la aplicación anterior, extraer el nuevo ZIP en otra carpeta y copiar la carpeta completa `datos_produccion` de la instalación anterior junto al nuevo ejecutable. No sobrescribir esa carpeta con datos de prueba. Los usuarios y perfiles ya guardados se conservan. La base de datos debe seguir en el disco local de la PC principal.

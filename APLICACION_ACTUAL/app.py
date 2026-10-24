@@ -54,7 +54,7 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_FAILURES = 6
 MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
-VERSION = '33.0-fase1'
+VERSION = '33.0.1-fase1'
 SCHEMA_VERSION = 4
 AVATAR_COLORS = {'azul': 'Azul', 'naranja': 'Naranja', 'verde': 'Verde', 'violeta': 'Violeta'}
 AVATAR_DEFAULTS = {'tecnico': 'azul', 'supervisor': 'naranja', 'administrador': 'violeta', 'visitante': 'verde'}
@@ -259,6 +259,10 @@ def init_db():
                 color TEXT NOT NULL CHECK(color IN ('azul','naranja','verde','violeta')),
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS user_avatar_styles (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id),
+                style TEXT NOT NULL CHECK(style IN ('clasico','cabello_corto','cabello_largo'))
+            );
             CREATE TABLE IF NOT EXISTS catalog (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 kind TEXT NOT NULL CHECK(kind IN ('marcas','voltajes','condiciones')),
@@ -315,6 +319,7 @@ def user_public(db, row):
             'role': effective_role(row), 'active': bool(row['active']),
             'must_change': bool(row['must_change']), 'must_complete_profile': bool(PRODUCTION_MODE and not foundation.profile(db, row['id'])['completed']),
             'avatar_color': avatar_preference(db, row['id'], effective_role(row))['color'],
+            'avatar_style': avatar_preference(db, row['id'], effective_role(row))['style'],
             'supervisor_id': foundation.supervisor_id(db, row['id']), 'position': foundation.profile(db, row['id'])['position'],
             'activity_ids': [r[0] for r in db.execute(
                 'SELECT activity_id FROM user_activities WHERE user_id=? AND enabled=1', (row['id'],))]}
@@ -322,7 +327,9 @@ def user_public(db, row):
 
 def avatar_preference(db, user_id, role):
     row = db.execute('SELECT color FROM user_avatar_preferences WHERE user_id=?', (user_id,)).fetchone()
+    style = db.execute('SELECT style FROM user_avatar_styles WHERE user_id=?', (user_id,)).fetchone()
     return {'role': role, 'color': row['color'] if row else AVATAR_DEFAULTS.get(role, 'azul'),
+            'style': style['style'] if style else 'clasico',
             'colors': [{'id': key, 'label': label} for key, label in AVATAR_COLORS.items()]}
 
 
@@ -555,7 +562,7 @@ class Handler(BaseHTTPRequestHandler):
                       'production_mode': PRODUCTION_MODE, 'delivered_phase': 1 if PRODUCTION_MODE else None,
                       'validated_phase': 0 if PRODUCTION_MODE else None}
             if user:
-                result.update(csrf=user['csrf'], user={k: user[k] for k in ('id', 'username', 'name', 'role', 'must_change', 'must_complete_profile', 'avatar_color')})
+                result.update(csrf=user['csrf'], user={k: user[k] for k in ('id', 'username', 'name', 'role', 'must_change', 'must_complete_profile', 'avatar_color', 'avatar_style')})
             return self.json(result)
         user = self.auth()
         if not user:
@@ -563,6 +570,15 @@ class Handler(BaseHTTPRequestHandler):
         with database() as db:
             if path == '/api/profile':
                 return self.json({'profile': foundation.profile(db, user['id'])})
+            if path == '/api/base/backup-file':
+                foundation.administrator(user)
+                name = query.get('name', '')
+                if not name or Path(name).name != name or '/' in name or '\\' in name or not name.endswith('.db'):
+                    raise production.ApiError('Selecciona un respaldo de la lista.', 400)
+                file = DATA_DIR / 'backups' / name
+                if not file.is_file() or file.is_symlink():
+                    raise production.ApiError('El respaldo ya no está disponible.', 404)
+                return self.send_bytes(file.read_bytes(), 'application/octet-stream', headers={'Content-Disposition': f'attachment; filename="{name}"'})
             if path == '/api/base/status':
                 foundation.administrator(user)
                 return self.json({'phase': 1, 'environment': 'production' if PRODUCTION_MODE else 'pruebas',
@@ -701,8 +717,10 @@ class Handler(BaseHTTPRequestHandler):
         if PRODUCTION_MODE and path not in foundation.ALLOWED_PHASE_ONE_POSTS and not re.fullmatch(r'/api/usuarios/\d+/(actualizar|restablecer)', path):
             raise production.ApiError('La fase operativa todavía no está validada. Esta entrega habilita instalación, usuarios, auditoría y respaldos.', 423)
         if path == '/api/avatar':
-            if not isinstance(data, dict) or set(data) != {'color'} or not isinstance(data.get('color'), str) or data['color'] not in AVATAR_COLORS:
+            if not isinstance(data, dict) or not {'color'} <= set(data) <= {'color','style'} or not isinstance(data.get('color'), str) or data['color'] not in AVATAR_COLORS:
                 raise production.ApiError('Elige azul, naranja, verde o violeta para tu avatar.')
+            if 'style' in data and data['style'] not in ('clasico','cabello_corto','cabello_largo'):
+                raise production.ApiError('Elige un dibujo de la galería de avatares.')
             with database() as db, production._transaction(db):
                 before = avatar_preference(db, user['id'], user['role'])
                 db.execute('''INSERT INTO user_avatar_preferences(user_id,color,updated_at) VALUES(?,?,?)
@@ -710,6 +728,9 @@ class Handler(BaseHTTPRequestHandler):
                     (user['id'], data['color'], utcnow()))
                 production.audit(db, user, 'avatar', user['id'], 'cambiar_color',
                                  before={'color': before['color']}, after={'color': data['color']})
+                if 'style' in data:
+                    db.execute('INSERT INTO user_avatar_styles(user_id,style) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET style=excluded.style',(user['id'],data['style']))
+                    production.audit(db,user,'avatar',user['id'],'cambiar_dibujo',before={'style':before['style']},after={'style':data['style']})
                 result = avatar_preference(db, user['id'], user['role'])
             return self.json({'ok': True, **result})
         if path == '/api/logout':

@@ -63,6 +63,18 @@ class AvatarHTTPTests(HTTPFixture, unittest.TestCase):
             self.assertEqual(saved.execute('SELECT color FROM user_avatar_preferences').fetchall(), [('azul',)])
             self.assertEqual(saved.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
 
+    def test_drawing_is_own_persistent_preference_without_role_change(self):
+        tech = self.tech()
+        self.assertEqual(self.result(tech, '/api/avatar')['style'], 'clasico')
+        for style in ('cabello_corto', 'cabello_largo'):
+            result = self.result(tech, '/api/avatar', {'color':'azul','style':style})
+            self.assertEqual((result['style'],result['role']),(style,'tecnico'))
+        app.init_db()
+        self.assertEqual(self.result(tech,'/api/me')['user']['avatar_style'],'cabello_largo')
+        self.assertEqual(self.result(self.admin,'/api/avatar')['style'],'clasico')
+        self.result(tech,'/api/avatar',{'color':'azul','style':'administrador'},expected=400)
+        self.assertTrue(self.result(self.admin,'/api/auditoria/integridad')['ok'])
+
 
 if __name__ == '__main__':
     unittest.main()
