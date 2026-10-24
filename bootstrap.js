@@ -108,10 +108,14 @@ var banner = document.getElementById("demo-banner");
 new ResizeObserver(() => document.documentElement.style.setProperty("--demo-banner-height", banner.offsetHeight + "px")).observe(banner);
 try {
   await rpc({ type: "init", baseUrl });
+  for (const name of ["table-tools.js", "profile-avatars.js", "drilldown.js", "foundation-ui.js", "app.js"]) await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = versionedUrl(name);
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("No se pudo cargar la interfaz. Recarga la p\xE1gina para volver a intentarlo."));
+    document.body.append(script);
+  });
   loader.remove();
-  const script = document.createElement("script");
-  script.src = versionedUrl("app.js");
-  document.body.append(script);
 } catch (error) {
   status.textContent = error.message;
 }

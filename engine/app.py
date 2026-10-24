@@ -25,7 +25,7 @@ import threading
 import time
 import traceback
 import webbrowser
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, ExitStack
 from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer as BaseThreadingHTTPServer
@@ -35,6 +35,7 @@ from urllib.parse import parse_qs, urlparse
 import documents
 import production
 import analytics
+import foundation
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / 'datos_locales'
@@ -42,6 +43,7 @@ DB_PATH = DATA_DIR / 'laboratorio.db'
 HOST, PORT = '127.0.0.1', 8765
 DEFAULT_NORMAL_PORT, DEFAULT_DEMO_PORT = 8765, 8766
 DEMO_MODE = False
+PRODUCTION_MODE = False
 PUBLIC_ORIGIN = ''
 LAN_IP = ''
 PASSWORD_ROUNDS = 260000
@@ -52,8 +54,10 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_FAILURES = 6
 MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
-VERSION = '2.1-v6-analitica'
+VERSION = '33.0-fase1'
 SCHEMA_VERSION = 4
+AVATAR_COLORS = {'azul': 'Azul', 'naranja': 'Naranja', 'verde': 'Verde', 'violeta': 'Violeta'}
+AVATAR_DEFAULTS = {'tecnico': 'azul', 'supervisor': 'naranja', 'administrador': 'violeta', 'visitante': 'verde'}
 
 
 class ThreadingHTTPServer(BaseThreadingHTTPServer):
@@ -117,19 +121,23 @@ def validate_lan_data_directory(value):
     return candidate
 
 
-def configure(data_dir=None, port=8765, demo=False, *, public_origin=None, lan_ip=None):
-    global DATA_DIR, DB_PATH, HOST, PORT, DEMO_MODE, PUBLIC_ORIGIN, LAN_IP
+def configure(data_dir=None, port=8765, demo=False, *, public_origin=None, lan_ip=None, production=False):
+    global DATA_DIR, DB_PATH, HOST, PORT, DEMO_MODE, PUBLIC_ORIGIN, LAN_IP, PRODUCTION_MODE
     origin = validate_public_origin(public_origin) if public_origin else ''
     address = validate_lan_ip(lan_ip) if lan_ip is not None else ''
     if origin and address:
         raise ValueError('El modo de red local y el perfil de publicación HTTPS se configuran por separado.')
+    if production and (demo or origin):
+        raise ValueError('Producción local utiliza una base propia, separada de la demo y la nube.')
     selected_port = int(port)
     if not 0 <= selected_port <= 65535:
         raise ValueError('Puerto inválido.')
-    directory = Path(data_dir) if data_dir is not None else ROOT / ('datos_demo' if demo else 'datos_locales')
-    DATA_DIR = validate_lan_data_directory(data_dir if data_dir is not None else directory) if address else directory.resolve()
+    home = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else ROOT
+    directory = Path(data_dir) if data_dir is not None else home / ('datos_produccion' if production else 'datos_demo' if demo else 'datos_locales')
+    DATA_DIR = validate_lan_data_directory(directory) if address or production else directory.resolve()
     DB_PATH = DATA_DIR / 'laboratorio.db'
     PORT, DEMO_MODE = selected_port, bool(demo)
+    PRODUCTION_MODE = bool(production)
     PUBLIC_ORIGIN = origin
     LAN_IP = address
     HOST = address or '127.0.0.1'
@@ -246,6 +254,11 @@ def init_db():
                 csrf TEXT NOT NULL,
                 expires INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS user_avatar_preferences (
+                user_id INTEGER PRIMARY KEY REFERENCES users(id),
+                color TEXT NOT NULL CHECK(color IN ('azul','naranja','verde','violeta')),
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS catalog (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 kind TEXT NOT NULL CHECK(kind IN ('marcas','voltajes','condiciones')),
@@ -278,6 +291,9 @@ def init_db():
                      'Medidor en Óptimas Condiciones']
         db.executemany("INSERT OR IGNORE INTO catalog(kind,label) VALUES('condiciones',?)", [(v,) for v in additions])
         production.init_schema(db)
+        foundation.init_schema(db)
+        if not PRODUCTION_MODE and foundation.setting(db, 'environment') == 'production':
+            raise ValueError('Esta base pertenece a producción. Iníciala con --production; no se abre como demo o instalación antigua.')
         if db.execute('PRAGMA user_version').fetchone()[0] < 3:
             # El supervisor del prototipo tenía autoridad administrativa total.
             # Conservar una cuenta dueña evita dejar la instalación migrada sin
@@ -297,9 +313,17 @@ def init_db():
 def user_public(db, row):
     return {'id': row['id'], 'username': row['username'], 'name': row['name'],
             'role': effective_role(row), 'active': bool(row['active']),
-            'must_change': bool(row['must_change']),
+            'must_change': bool(row['must_change']), 'must_complete_profile': bool(PRODUCTION_MODE and not foundation.profile(db, row['id'])['completed']),
+            'avatar_color': avatar_preference(db, row['id'], effective_role(row))['color'],
+            'supervisor_id': foundation.supervisor_id(db, row['id']), 'position': foundation.profile(db, row['id'])['position'],
             'activity_ids': [r[0] for r in db.execute(
                 'SELECT activity_id FROM user_activities WHERE user_id=? AND enabled=1', (row['id'],))]}
+
+
+def avatar_preference(db, user_id, role):
+    row = db.execute('SELECT color FROM user_avatar_preferences WHERE user_id=?', (user_id,)).fetchone()
+    return {'role': role, 'color': row['color'] if row else AVATAR_DEFAULTS.get(role, 'azul'),
+            'colors': [{'id': key, 'label': label} for key, label in AVATAR_COLORS.items()]}
 
 
 def db_user_by_session(raw_cookie):
@@ -332,7 +356,7 @@ def validate_name(value):
 
 def validate_password(password, username, role):
     password = str(password or '')
-    minimum = 10 if role in MANAGERS else 4
+    minimum = 10 if PRODUCTION_MODE or role in MANAGERS else 4
     if not minimum <= len(password) <= 128:
         raise ValueError(f'La contraseña debe tener de {minimum} a 128 caracteres.')
     if role in MANAGERS and hmac.compare_digest(password.lower(), username.lower()):
@@ -411,8 +435,15 @@ class Handler(BaseHTTPRequestHandler):
         if admin and user['role'] not in MANAGERS:
             self.fail('Acceso exclusivo de supervisión y administración.', 403)
             return None
-        if user['must_change'] and urlparse(self.path).path not in ('/api/password', '/api/logout', '/api/me'):
+        route = urlparse(self.path).path
+        if user['must_change'] and route not in ('/api/password', '/api/logout', '/api/me', '/api/profile'):
             self.fail('Cambia tu contraseña inicial para continuar.', 403, must_change=True)
+            return None
+        if user.get('must_complete_profile') and not user['must_change'] and route not in ('/api/password', '/api/logout', '/api/me', '/api/profile', '/api/avatar'):
+            self.fail('Completa tu perfil para continuar.', 403, must_complete_profile=True)
+            return None
+        if PRODUCTION_MODE and route.startswith('/api/auditoria') and user['role'] != 'administrador':
+            self.fail('La auditoría general es exclusiva de Administración.', 403)
             return None
         if csrf and not hmac.compare_digest(self.headers.get('X-CSRF-Token', ''), user['csrf']):
             self.fail('Verificación de seguridad fallida. Actualiza la página.', 403)
@@ -471,6 +502,10 @@ class Handler(BaseHTTPRequestHandler):
         self._dispatch('POST')
 
     def _dispatch(self, method):
+        with foundation.REQUEST_LOCK:
+            return self._dispatch_locked(method)
+
+    def _dispatch_locked(self, method):
         try:
             if not self.check_host():
                 return
@@ -497,6 +532,14 @@ class Handler(BaseHTTPRequestHandler):
         static = {'/': ('static/index.html', 'text/html; charset=utf-8'),
                   '/app.js': ('static/app.js', 'application/javascript; charset=utf-8'),
                   '/app.css': ('static/app.css', 'text/css; charset=utf-8'),
+                  '/table-tools.js': ('static/table-tools.js', 'application/javascript; charset=utf-8'),
+                  '/table-tools.css': ('static/table-tools.css', 'text/css; charset=utf-8'),
+                  '/drilldown.js': ('static/drilldown.js', 'application/javascript; charset=utf-8'),
+                  '/drilldown.css': ('static/drilldown.css', 'text/css; charset=utf-8'),
+                  '/profile-avatars.js': ('static/profile-avatars.js', 'application/javascript; charset=utf-8'),
+                  '/profile-avatars.css': ('static/profile-avatars.css', 'text/css; charset=utf-8'),
+                  '/foundation-ui.js': ('static/foundation-ui.js', 'application/javascript; charset=utf-8'),
+                  '/foundation-ui.css': ('static/foundation-ui.css', 'text/css; charset=utf-8'),
                   '/edesur.png': ('assets/edesur.png', 'image/png')}
         if path in static:
             filename, mime = static[path]
@@ -508,18 +551,31 @@ class Handler(BaseHTTPRequestHandler):
             with database() as db:
                 setup = db.execute('SELECT count(*) FROM users').fetchone()[0] == 0
             result = {'logged': bool(user), 'setup_required': setup, 'demo': DEMO_MODE,
-                      'public_demo': bool(PUBLIC_ORIGIN and DEMO_MODE), 'version': VERSION}
+                      'public_demo': bool(PUBLIC_ORIGIN and DEMO_MODE), 'version': VERSION,
+                      'production_mode': PRODUCTION_MODE, 'delivered_phase': 1 if PRODUCTION_MODE else None,
+                      'validated_phase': 0 if PRODUCTION_MODE else None}
             if user:
-                result.update(csrf=user['csrf'], user={k: user[k] for k in ('id', 'username', 'name', 'role', 'must_change')})
+                result.update(csrf=user['csrf'], user={k: user[k] for k in ('id', 'username', 'name', 'role', 'must_change', 'must_complete_profile', 'avatar_color')})
             return self.json(result)
         user = self.auth()
         if not user:
             return
         with database() as db:
+            if path == '/api/profile':
+                return self.json({'profile': foundation.profile(db, user['id'])})
+            if path == '/api/base/status':
+                foundation.administrator(user)
+                return self.json({'phase': 1, 'environment': 'production' if PRODUCTION_MODE else 'pruebas',
+                                  'backup': foundation.backup_status(sys.modules[__name__], user)})
+            if path == '/api/avatar':
+                return self.json(avatar_preference(db, user['id'], user['role']))
             if path == '/api/usuarios':
                 if user['role'] == 'visitante':
                     raise production.ApiError('El perfil visitante solo consulta estadísticas agregadas.', 403)
-                rows = db.execute('SELECT * FROM users ORDER BY name,id') if user['role'] in MANAGERS else db.execute('SELECT * FROM users WHERE id=?', (user['id'],))
+                if PRODUCTION_MODE and user['role'] == 'supervisor':
+                    rows = db.execute('SELECT * FROM users WHERE id=? OR id IN (SELECT user_id FROM user_supervisors WHERE supervisor_id=?) ORDER BY name,id', (user['id'], user['id']))
+                else:
+                    rows = db.execute('SELECT * FROM users ORDER BY name,id') if user['role'] in MANAGERS else db.execute('SELECT * FROM users WHERE id=?', (user['id'],))
                 return self.json({'users': [user_public(db, row) for row in rows]})
             if path == '/api/catalogos':
                 result = {kind: [] for kind in ('marcas', 'voltajes', 'condiciones')}
@@ -626,6 +682,36 @@ class Handler(BaseHTTPRequestHandler):
         user = self.auth(csrf=True)
         if not user:
             return
+        if path == '/api/profile':
+            if user['must_change']:
+                raise production.ApiError('Cambia primero tu contraseña temporal.', 403)
+            return self.json(foundation.save_profile(sys.modules[__name__], user, data))
+        if path.startswith('/api/base/'):
+            foundation.administrator(user)
+            if not PRODUCTION_MODE:
+                raise production.ApiError('Los respaldos físicos y la restauración se configuran en la instalación local de producción.', 403)
+            action = {'/api/base/backup-config': foundation.save_backup_settings,
+                      '/api/base/restore-preview': foundation.restore_preview,
+                      '/api/base/restore': foundation.restore_confirm}.get(path)
+            if path == '/api/base/backup-now':
+                return self.json(foundation.run_backup(sys.modules[__name__], user))
+            if action:
+                return self.json(action(sys.modules[__name__], user, data))
+            raise production.ApiError('Acción de administración no encontrada.', 404)
+        if PRODUCTION_MODE and path not in foundation.ALLOWED_PHASE_ONE_POSTS and not re.fullmatch(r'/api/usuarios/\d+/(actualizar|restablecer)', path):
+            raise production.ApiError('La fase operativa todavía no está validada. Esta entrega habilita instalación, usuarios, auditoría y respaldos.', 423)
+        if path == '/api/avatar':
+            if not isinstance(data, dict) or set(data) != {'color'} or not isinstance(data.get('color'), str) or data['color'] not in AVATAR_COLORS:
+                raise production.ApiError('Elige azul, naranja, verde o violeta para tu avatar.')
+            with database() as db, production._transaction(db):
+                before = avatar_preference(db, user['id'], user['role'])
+                db.execute('''INSERT INTO user_avatar_preferences(user_id,color,updated_at) VALUES(?,?,?)
+                    ON CONFLICT(user_id) DO UPDATE SET color=excluded.color,updated_at=excluded.updated_at''',
+                    (user['id'], data['color'], utcnow()))
+                production.audit(db, user, 'avatar', user['id'], 'cambiar_color',
+                                 before={'color': before['color']}, after={'color': data['color']})
+                result = avatar_preference(db, user['id'], user['role'])
+            return self.json({'ok': True, **result})
         if path == '/api/logout':
             cookie = SimpleCookie()
             cookie.load(self.headers.get('Cookie', ''))
@@ -658,6 +744,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/backup':
             if user['role'] != 'administrador':
                 raise production.ApiError('Solo administración puede generar respaldos completos.', 403)
+            if PRODUCTION_MODE:
+                result = foundation.run_backup(sys.modules[__name__], user)
+                return self.json({**result, 'message': 'Copia local y dos externas verificadas.' if result['ok'] else 'Copia local guardada; los dos destinos externos todavía requieren revisión.'})
             target = create_backup()
             with database() as db:
                 production.audit(db, user['id'], 'sistema', target.name, 'respaldo',
@@ -708,8 +797,14 @@ class Handler(BaseHTTPRequestHandler):
                     role = str(data.get('role', 'tecnico'))
                     if role not in ROLES or (actor['role'] != 'administrador' and role != 'tecnico'):
                         raise production.ApiError('No puedes asignar ese perfil.', 403)
-                    password = username if role == 'tecnico' else validate_password(data.get('password'), username, role)
-                    uid = insert_user(db, username, name, role, password, int(role in MANAGERS))
+                    password = (validate_password(data.get('password') or secrets.token_urlsafe(18), username, role) if PRODUCTION_MODE
+                                else username if role == 'tecnico' else validate_password(data.get('password'), username, role))
+                    uid = insert_user(db, username, name, role, password, int(PRODUCTION_MODE or role in MANAGERS))
+                    if PRODUCTION_MODE:
+                        position = production._text(data.get('position'), 'Puesto', 150, True)
+                        db.execute('INSERT INTO employee_profiles(user_id,full_name,position) VALUES(?,?,?)', (uid, name, position))
+                        if role == 'tecnico':
+                            foundation.assign_team(db, actor, uid, data)
                     production.assign_user(db, uid, data.get('activity_ids', []))
                     production.audit(db, actor['id'], 'users', uid, 'crear', after={'username': username, 'name': name, 'role': role})
                 else:
@@ -718,15 +813,18 @@ class Handler(BaseHTTPRequestHandler):
                     if not target:
                         raise production.ApiError('No se encontró el usuario.', 404)
                     role = effective_role(target)
+                    if PRODUCTION_MODE and actor['role'] == 'supervisor' and foundation.supervisor_id(db, uid) != actor['id']:
+                        raise production.ApiError('Solo puedes gestionar los accesos de tu equipo.', 403)
                     if actor['role'] != 'administrador' and role != 'tecnico':
                         raise production.ApiError('Solo administración puede gestionar perfiles privilegiados.', 403)
                     if path.endswith('/restablecer'):
                         if role != 'tecnico':
                             raise production.ApiError('Este restablecimiento es exclusivo para colaboradores.', 403)
                         salt = secrets.token_hex(16)
-                        db.execute('UPDATE users SET salt=?,hash=?,must_change=0 WHERE id=?', (salt, pw_hash(target['username'], salt), uid))
+                        password = secrets.token_urlsafe(18) if PRODUCTION_MODE else target['username']
+                        db.execute('UPDATE users SET salt=?,hash=?,must_change=? WHERE id=?', (salt, pw_hash(password, salt), int(PRODUCTION_MODE), uid))
                         db.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
-                        production.audit(db, actor['id'], 'users', uid, 'restablecer_clave', reason='Restablecimiento al código de empleado')
+                        production.audit(db, actor['id'], 'users', uid, 'restablecer_clave', reason='Asignación de nueva clave temporal' if PRODUCTION_MODE else 'Restablecimiento al código de empleado')
                         reset_username = target['username']
                     else:
                         name = validate_name(data.get('name', target['name']))
@@ -740,6 +838,11 @@ class Handler(BaseHTTPRequestHandler):
                             if count <= 1:
                                 raise ValueError('Debe mantenerse al menos una cuenta administradora activa.')
                         before = user_public(db, target)
+                        if PRODUCTION_MODE and role == 'tecnico' and 'supervisor_id' in data:
+                            foundation.assign_team(db, actor, uid, data)
+                        if PRODUCTION_MODE and 'position' in data:
+                            position = production._text(data['position'], 'Puesto', 150, True)
+                            db.execute('INSERT INTO employee_profiles(user_id,position) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET position=excluded.position', (uid, position))
                         db.execute('UPDATE users SET name=?,active=? WHERE id=?', (name, int(active), uid))
                         if not active:
                             db.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
@@ -756,7 +859,7 @@ class Handler(BaseHTTPRequestHandler):
                 for key in list(LOGIN_FAILS):
                     if key[1] == reset_username:
                         del LOGIN_FAILS[key]
-        return self.json({'ok': True, 'id': uid})
+        return self.json({'ok': True, 'id': uid, **({'temporary_password': password} if PRODUCTION_MODE and (path == '/api/usuarios' or path.endswith('/restablecer')) else {})})
 
 
 def seed_demo(admin_password=None):
@@ -807,12 +910,33 @@ def main():
     parser.add_argument('--port', type=int, help='Puerto local; por defecto 8765 normal y 8766 demo')
     parser.add_argument('--lan-ip', help='IP privada fija de esta PC principal para compartir en la oficina; ejemplo 192.168.1.20')
     parser.add_argument('--no-browser', action='store_true')
+    parser.add_argument('--production', action='store_true', default=bool(getattr(sys, 'frozen', False)), help='Instalación local V33, fase 1, vacía y separada de pruebas')
+    parser.add_argument('--reset-admin', action='store_true', help='Recuperación física de la cuenta maestra, con la aplicación cerrada')
     args = parser.parse_args()
     port = args.port if args.port is not None else (DEFAULT_DEMO_PORT if args.demo else DEFAULT_NORMAL_PORT)
     try:
-        configure(args.data_dir, port, args.demo, lan_ip=args.lan_ip)
+        configure(args.data_dir, port, args.demo, lan_ip=args.lan_ip, production=args.production and not args.demo)
     except ValueError as error:
         parser.error(str(error))
+    with ExitStack() as stack:
+        if PRODUCTION_MODE:
+            try:
+                stack.enter_context(foundation.process_lock(DATA_DIR))
+            except production.ApiError as error:
+                raise SystemExit(error.message) from None
+        if args.reset_admin:
+            if not PRODUCTION_MODE or not sys.stdin.isatty():
+                parser.error('La recuperación requiere --production y una consola física de la PC principal.')
+            init_db()
+            if input('Escribe RESTABLECER para recuperar la cuenta maestra: ').strip() != 'RESTABLECER':
+                raise SystemExit('Recuperación cancelada.')
+            password = foundation.reset_master(sys.modules[__name__], input('Motivo de la recuperación: '))
+            print('CLAVE TEMPORAL DE ADMIN (una sola visualización): ' + password, flush=True)
+            return
+        serve(args)
+
+
+def serve(args):
     # Reservar el puerto antes de modificar la base evita migrar mientras una
     # instancia anterior sigue atendiendo e insertando revisiones antiguas.
     server = ThreadingHTTPServer((HOST, PORT), Handler, bind_and_activate=False)
@@ -827,6 +951,10 @@ def main():
                 raise SystemExit(f'La IP {LAN_IP} no está asignada a esta PC. Comprueba ipconfig y la reserva de IP con TI.') from None
             raise
         init_db()
+        if PRODUCTION_MODE:
+            password = foundation.bootstrap(sys.modules[__name__])
+            if password:
+                print('USUARIO MAESTRO: admin\nCLAVE TEMPORAL DE ADMIN (una sola visualización): ' + password, flush=True)
         if args.demo:
             seed_demo()
         server.server_activate()
@@ -834,17 +962,22 @@ def main():
         server.server_close()
         raise
     url = f'http://{HOST}:{server.server_port}'
-    mode = 'DEMOSTRACIÓN CON DATOS FICTICIOS' if args.demo else 'INSTALACIÓN NORMAL'
+    mode = 'PRODUCCIÓN LOCAL · V33 FASE 1 · OPERACIÓN PENDIENTE DE VALIDAR' if PRODUCTION_MODE else 'DEMOSTRACIÓN CON DATOS FICTICIOS' if args.demo else 'INSTALACIÓN NORMAL'
     network = ('RED INTERNA: comparte esta dirección solo en la oficina. La PC principal debe permanecer encendida.'
                if LAN_IP else 'Prueba en este equipo; acceso por loopback.')
     print(f'Laboratorio de Medidas — Control de Producción {VERSION}\n{mode}\n{url}\n{network}\nCtrl+C para cerrar.', flush=True)
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
+    scheduler = foundation.BackupScheduler(sys.modules[__name__]) if PRODUCTION_MODE else None
+    if scheduler:
+        scheduler.start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        if scheduler:
+            scheduler.close()
         server.server_close()
 
 

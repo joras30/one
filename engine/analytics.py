@@ -33,6 +33,8 @@ FILTER_LABELS = {
     "activity_id": "Actividad", "responsible_id": "Responsable", "sap": "SAP",
     "voltage": "Voltaje", "brand": "Marca", "model": "Modelo", "condition": "Condición", "meter": "Serie",
     "group_by": "Agrupación",
+    "activity_name": "Nombre histórico de actividad", "unit": "Unidad", "metric": "Indicador",
+    "search": "Búsqueda", "failure": "Fallo informado", "voltage_missing": "Sin voltaje informado",
 }
 
 
@@ -188,6 +190,14 @@ def _goal_candidates(db, user, query):
         "SELECT * FROM production_goals WHERE " + " AND ".join(clauses), values)]
 
 
+def _partial_goal_scope(query):
+    """Los filtros de detalle no dividen una meta de período completo."""
+    return (any(query.get(key) for key in ("sap", "voltage", "brand", "model", "condition", "meter",
+                                           "activity_name", "search", "failure"))
+            or str(query.get("voltage_missing", "")) == "1"
+            or production._detail_metric(query) != "events")
+
+
 def _target(goals, user, query, first, last, activity_id, unit, responsible_id, events):
     """Una meta parcial, filtrada o superpuesta nunca se prorratea ni se duplica."""
     if user["role"] == "visitante":
@@ -196,7 +206,7 @@ def _target(goals, user, query, first, last, activity_id, unit, responsible_id, 
         return None, "multiple_activities"
     if not unit:
         return None, "multiple_units"
-    if any(query.get(key) for key in ("sap", "voltage", "brand", "model", "condition", "meter")):
+    if _partial_goal_scope(query):
         return None, "filtered_subset"
     start, end = first.isoformat(), last.isoformat()
     relevant = [goal for goal in goals if goal["activity_id"] == activity_id and goal["unit"] == unit
@@ -217,11 +227,14 @@ def _target(goals, user, query, first, last, activity_id, unit, responsible_id, 
 
 def _goal_dimensions(db, goals, query, periods, activity_id=None):
     """Incluir metas exactas sin producción, sin fabricar eventos ni sus tasas."""
-    if any(query.get(key) for key in ("sap", "voltage", "brand", "model", "condition", "meter")):
+    if _partial_goal_scope(query):
         return []
+    filtered_unit = production._text(query["unit"], "Unidad", 120, True) if query.get("unit") else None
     ranges = {(first.isoformat(), last.isoformat()) for first, last in periods}
     result = {}
     for goal in goals:
+        if filtered_unit is not None and goal["unit"] != filtered_unit:
+            continue
         if (goal["start_date"], goal["end_date"]) not in ranges:
             continue
         if goal["activity_id"] != (activity_id or query.get("activity_id") or goal["activity_id"]):

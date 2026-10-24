@@ -668,7 +668,7 @@ async function initialise(baseUrl) {
   py = await loadPyodide({ indexURL: new URL("runtime/", baseUrl).href });
   py.FS.mkdirTree("/app");
   py.FS.mkdirTree("/demo-data");
-  const files = ["app.py", "production.py", "documents.py", "operational.py", "analytics.py", "catalogos.json", "bridge.py"];
+  const files = ["app.py", "production.py", "documents.py", "operational.py", "analytics.py", "foundation.py", "catalogos.json", "bridge.py"];
   await Promise.all(files.map(async (name) => {
     const url = new URL("engine/" + name, baseUrl);
     if (buildVersion) url.searchParams.set("v", buildVersion);

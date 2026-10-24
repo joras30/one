@@ -664,6 +664,17 @@ def _filters(user, query, allow_visitor=False):
         raise ApiError("La cuenta visitante no tiene acceso al detalle de registros.", 403)
     if user["role"] == "visitante" and query.get("meter"):
         raise ApiError("El visitante consulta estadísticas agregadas, sin búsquedas por medidor.", 403)
+    if user["role"] == "visitante" and query.get("failure"):
+        raise ApiError("El visitante consulta fallos agregados, sin buscar texto operativo.", 403)
+    if user["role"] == "visitante" and query.get("search"):
+        raise ApiError("El visitante consulta agregados, sin búsquedas por datos personales u operativos.", 403)
+    _detail_metric(query)
+    if query.get("failure"):
+        _text(query["failure"], "Fallo informado", 1500, True)
+    if query.get("search"):
+        _text(query["search"], "Buscar registros", 200, True)
+    if isinstance(query.get("voltage_missing"), bool) or query.get("voltage_missing") not in (None, "", "0", "1", 0, 1):
+        raise ApiError("El filtro de voltaje sin informar debe ser 0 o 1.")
     clauses, values = [], []
     if user["role"] == "tecnico":
         clauses.append("e.responsible_id=?")
@@ -686,6 +697,14 @@ def _filters(user, query, allow_visitor=False):
     if query.get("activity_id"):
         clauses.append("e.activity_id=?")
         values.append(_text(query["activity_id"], "Actividad", 80))
+    if query.get("activity_name"):
+        clauses.append("EXISTS(SELECT 1 FROM activity_versions av WHERE av.activity_id=e.activity_id AND av.version=e.activity_version AND av.name=?)")
+        values.append(_text(query["activity_name"], "Nombre histórico de actividad", 150, True))
+    if query.get("unit"):
+        clauses.append("e.unit=?")
+        values.append(_text(query["unit"], "Unidad", 120, True))
+    if str(query.get("voltage_missing", "")) == "1":
+        clauses.append("COALESCE(json_extract(e.data_json,'$.voltaje'),'')=''")
     for param, field in (("sap", "sap"), ("voltage", "voltaje"), ("condition", "condicion"), ("brand", "marca"), ("model", "modelo")):
         if query.get(param):
             clauses.append(f"json_extract(e.data_json,'$.{field}')=?")
@@ -705,10 +724,126 @@ def _filters(user, query, allow_visitor=False):
 
 def _events(db, user, query, allow_visitor=False):
     where, params = _filters(user, query, allow_visitor)
-    return [_serialize(row, db) for row in db.execute(EVENT_SELECT + where + " ORDER BY e.work_date DESC,e.id DESC", params)]
+    rows = [_serialize(row, db) for row in db.execute(EVENT_SELECT + where + " ORDER BY e.work_date DESC,e.id DESC", params)]
+    rows = _detail_selection(rows, query)
+    if query.get("search"):
+        needle = _fold(_text(query["search"], "Buscar registros", 200, True))
+        def searchable(row):
+            values = [row[key] for key in ("id", "work_date", "activity_name", "responsible_name", "responsible_username",
+                      "recorded_by_name", "recorded_by_username", "quantity", "unit", "state")]
+            values.extend(row["data"].values())
+            return _fold(" ".join(str(value) for value in values if value is not None))
+        rows = [row for row in rows if needle in searchable(row)]
+    return rows
+
+
+DETAIL_METRICS = {
+    "events": ("Registros de actividad", "registros de actividad, no medidores físicos únicos"),
+    "reviews": ("Revisiones realizadas", "registros de revisión técnica"),
+    "approved": ("Revisiones aprobadas", "revisiones con resultado Apto"),
+    "rejected": ("Revisiones rechazadas", "revisiones con resultado No apto"),
+    "pending": ("Revisiones pendientes", "revisiones con resultado Pendiente"),
+    "without_result": ("Revisiones sin resultado", "revisiones cuyo resultado no es Apto, No apto ni Pendiente"),
+    "evaluated": ("Revisiones evaluadas", "revisiones concluidas: Apto + No apto"),
+    "unfinished": ("Revisiones sin concluir", "revisiones pendientes o sin resultado reconocido"),
+    "identified": ("Series identificadas", "una fila representativa por serie identificada en el alcance; se muestra su registro más reciente"),
+    "reentries": ("Reingresos de revisión", "revisiones adicionales después de la primera de cada serie dentro del alcance seleccionado"),
+    "calibrations": ("Mediciones de calibración", "revisiones con referencia, medición y tolerancia válidas"),
+    "outside_tolerance": ("Fuera de tolerancia", "revisiones cuya desviación absoluta supera la tolerancia registrada"),
+    "failures": ("Revisiones con fallo informado", "revisiones con un fallo registrado; no incluye las indicaciones Sin fallo o No aplica"),
+}
+
+
+def _detail_metric(query):
+    metric = _text(query.get("metric") or "events", "Indicador", 60, True)
+    if metric not in DETAIL_METRICS:
+        raise ApiError("Selecciona un indicador válido para consultar sus datos.")
+    return metric
+
+
+def _detail_selection(rows, query):
+    """La misma selección alimenta pantalla, paginación y archivos descargables.
+
+    Normalizar en Python mantiene exactamente las reglas de calidad existentes,
+    también con resultados históricos que contengan mayúsculas o acentos.
+    """
+    metric = _detail_metric(query)
+    if query.get("failure"):
+        from analytics import _failure_label
+        failure = _text(query["failure"], "Fallo informado", 1500, True)
+        rows = [row for row in rows if row["activity_id"] == "revision" and _failure_label(row["data"]) == failure]
+    if metric == "events":
+        return rows
+    if metric == "identified":
+        seen, selected = set(), []
+        for row in rows:  # El origen está ordenado por fecha e ID descendentes.
+            serial = row["data"].get("serie")
+            if serial and serial not in seen:
+                seen.add(serial)
+                selected.append(row)
+        return selected
+    rows = [row for row in rows if row["activity_id"] == "revision"]
+    if metric == "reviews":
+        return rows
+    if metric == "failures":
+        from analytics import _failure_label
+        return [row for row in rows if _failure_label(row["data"])]
+    if metric == "reentries":
+        seen, selected_ids = set(), set()
+        for row in reversed(rows):
+            serial = row["data"].get("serie")
+            if not serial:
+                continue
+            if serial in seen:
+                selected_ids.add(row["id"])
+            seen.add(serial)
+        return [row for row in rows if row["id"] in selected_ids]
+    if metric in {"calibrations", "outside_tolerance"}:
+        from analytics import _calibration
+        return [row for row in rows if (value := _calibration(row["data"])) is not None
+                and (metric == "calibrations" or value[1])]
+    results = {"approved": {"apto"}, "rejected": {"no apto"}, "pending": {"pendiente"},
+               "evaluated": {"apto", "no apto"}}
+    if metric in results:
+        return [row for row in rows if _fold(row["data"].get("resultado", "")) in results[metric]]
+    excluded = {"apto", "no apto", "pendiente"} if metric == "without_result" else {"apto", "no apto"}
+    return [row for row in rows if _fold(row["data"].get("resultado", "")) not in excluded]
+
+
+def _event_page(rows, query):
+    total = len(rows)
+    page_size = _integer(query.get("page_size", 20), "Tamaño de página", 1, 200)
+    pages = max(1, math.ceil(total / page_size))
+    page = min(_integer(query.get("page", 1), "Página", 1, 1_000_000), pages)
+    return {"records": rows[(page - 1) * page_size:page * page_size], "total": total,
+            "page": page, "pages": pages, "page_size": page_size}
+
+
+def _detail(db, user, query):
+    from analytics import _quality_summary
+    rows = _events(db, user, query, allow_visitor=True)
+    metric = _detail_metric(query)
+    totals, activities, days = Counter(), Counter(), Counter()
+    for row in rows:
+        totals[row["unit"]] += row["quantity"]
+        activities[(row["activity_name"], row["unit"])] += row["quantity"]
+        days[row["work_date"]] += 1
+    result = _event_page(rows, query)
+    detail_allowed = user["role"] != "visitante"
+    if not detail_allowed:
+        result["records"] = []
+    return {**result, "detail_allowed": detail_allowed, "metric": metric,
+            "metric_label": DETAIL_METRICS[metric][0], "count_scope": DETAIL_METRICS[metric][1],
+            "summary": {"records": len(rows), "totals_by_unit": dict(totals),
+                        "quality": _quality_summary([row for row in rows if row["activity_id"] == "revision"])},
+            "breakdown": {"by_activity": [{"label": name, "unit": unit, "value": value}
+                                          for (name, unit), value in activities.most_common()],
+                          "by_day": [{"label": day, "value": value} for day, value in sorted(days.items())]}}
 
 
 def _list_events(db, user, query):
+    if _detail_metric(query) != "events" or query.get("failure") or query.get("search"):
+        return _event_page(_events(db, user, query), query)
     where, params = _filters(user, query)
     total = db.execute("SELECT count(*) FROM production_events e" + where, params).fetchone()[0]
     page_size = _integer(query.get("page_size", 20), "Tamaño de página", 1, 200)
@@ -716,7 +851,8 @@ def _list_events(db, user, query):
     page = min(_integer(query.get("page", 1), "Página", 1, 1_000_000), pages)
     rows = db.execute(EVENT_SELECT + where + " ORDER BY e.work_date DESC,e.id DESC LIMIT ? OFFSET ?",
                       (*params, page_size, (page - 1) * page_size)).fetchall()
-    return {"records": [_serialize(row, db) for row in rows], "total": total, "page": page, "pages": pages}
+    return {"records": [_serialize(row, db) for row in rows], "total": total, "page": page, "pages": pages,
+            "page_size": page_size}
 
 
 def _history(db, user, query):
@@ -840,6 +976,7 @@ def _dashboard(db, user, query):
     identified = {event["data"].get("serie") for event in events if event["data"].get("serie")}
     totals = Counter()
     by_activity, by_voltage, by_day, by_person = Counter(), Counter(), Counter(), Counter()
+    by_person_ids = {}
     duration = Decimal(0)
     duration_qty = 0
     for event in events:
@@ -847,7 +984,9 @@ def _dashboard(db, user, query):
         by_activity[(event["activity_name"], event["unit"])] += event["quantity"]
         by_voltage[event["data"].get("voltaje") or "Sin voltaje"] += 1
         by_day[event["work_date"]] += 1
-        by_person[f"{event['responsible_name']} ({event['responsible_username']})"] += 1
+        person_label = f"{event['responsible_name']} ({event['responsible_username']})"
+        by_person[person_label] += 1
+        by_person_ids[person_label] = event["responsible_id"]
         if event["data"].get("tiempo_minutos") not in ("", None):
             duration += Decimal(str(event["data"]["tiempo_minutos"]))
             duration_qty += event["quantity"]
@@ -859,7 +998,9 @@ def _dashboard(db, user, query):
             "reentries": sum(bool(event["data"].get("serie")) for event in reviews) - len(unique_reviews), "totals_by_unit": dict(totals),
             "by_activity": [{"label": name, "value": value, "unit": unit} for (name, unit), value in by_activity.most_common()],
             "by_voltage": aggregate(by_voltage), "by_day": [{"label": day, "value": value} for day, value in sorted(by_day.items())],
-            "by_collaborator": [] if user["role"] == "visitante" else aggregate(by_person),
+            "by_collaborator": [] if user["role"] == "visitante" else [
+                {"label": label, "value": value, "responsible_id": by_person_ids[label]}
+                for label, value in by_person.most_common()],
             "receipts_pending": sum(1 for receipt in receipts if receipt["pending"] is None or receipt["pending"] > 0),
             "receipts_pending_scope": "historial al corte",
             "goals": [] if user["role"] == "visitante" else goals,
@@ -1036,10 +1177,12 @@ def export_rows(db, user, query):
     context = []
     if query.get("desde") or query.get("hasta"):
         context.append(f"Período: {query.get('desde') or 'inicio'} a {query.get('hasta') or 'actualidad'}")
-    for key, label in (("activity_id", "Actividad"), ("responsible_id", "Responsable"), ("sap", "SAP"),
-                       ("voltage", "Voltaje"), ("condition", "Condición"), ("brand", "Marca"), ("model", "Modelo"), ("meter", "Serie"), ("state", "Estado")):
+    for key, label in (("activity_id", "Actividad"), ("activity_name", "Nombre histórico de actividad"), ("responsible_id", "Responsable"), ("sap", "SAP"),
+                       ("voltage", "Voltaje"), ("condition", "Condición"), ("brand", "Marca"), ("model", "Modelo"), ("meter", "Serie"), ("state", "Estado"),
+                       ("metric", "Indicador"), ("unit", "Unidad"), ("failure", "Fallo informado"), ("voltage_missing", "Sin voltaje informado"), ("search", "Búsqueda")):
         if query.get(key):
-            context.append(f"{label}: {_text(query[key], label, 150)}")
+            maximum = {"failure": 1500, "search": 200}.get(key, 150)
+            context.append(f"{label}: {_text(query[key], label, maximum)}")
     context.append(f"Generado: {now()}")
     title = "Laboratorio de Medidas — Control de Producción | " + " · ".join(context)
     return {"headers": headers, "rows": values, "title": title}
@@ -1063,6 +1206,16 @@ def handle_get(db, user, path, query):
         return operational.sap_items(db)
     if path in {"/api/eventos", "/api/registros"}:
         return _list_events(db, user, query)
+    if path == "/api/detalle":
+        return _detail(db, user, query)
+    match = re.fullmatch(r"/api/eventos/(\d+)", path)
+    if match:
+        if user["role"] == "visitante":
+            raise ApiError("La cuenta visitante no tiene acceso al detalle de registros.", 403)
+        event = _event(db, int(match.group(1)))
+        if user["role"] not in MANAGERS and event["responsible_id"] != user["id"]:
+            raise ApiError("Solo puedes consultar tu propia producción.", 403)
+        return {"record": event}
     if path == "/api/historial":
         return _history(db, user, query)
     if path == "/api/dashboard":
