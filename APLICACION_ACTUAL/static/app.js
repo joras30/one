@@ -212,7 +212,7 @@ function chartPaletteSvg(svg){
   const p=light?{surface:'#ffffff',grid:'#c6d0de',text:'#172b45',muted:'#42546a',blue:'#1665b4',green:'#14774f',red:'#b8324d',amber:'#946200'}:{surface:'#1e293b',grid:'#526176',text:'#f1f5f9',muted:'#cbd5e1',blue:'#69b4ff',green:'#55d6a0',red:'#ff8796',amber:'#f5ca73'};
   const groups={surface:['#142238'],grid:['#273a53','#2b4059','#2d415a','#32445b'],blue:['#38b9ed','#39b8ee','#3b9ed5','#3cc4f6','#42c3e5','#58c8f0','#60bdf1','#63d4fa','#6bd4f5','#6fa9f1'],green:['#51d69a','#54d69b'],red:['#ff7384'],amber:['#efaa6b','#f1a654','#f2ca66'],text:['#dce9fa','#e0edfc','#e4f1ff','#e5f7ee','#e8f5ff']};
   const map={};for(const [key,colors] of Object.entries(groups))for(const color of colors)map[color]=p[key];
-  return svg.replace(/font-size="(9|10)"/g,(_,size)=>`font-size="${size==='9'?11:12}"`).replace(/#[0-9a-f]{6}\b/gi,color=>map[color.toLowerCase()] || p.muted);
+  return svg.replace(/font-size="(9|10)"/g,(_,size)=>`font-size="${size==='9'?11:12}"`).replace(/(fill|stroke|stop-color)="(#[0-9a-f]{6})"/gi,(_,attribute,color)=>`${attribute}="${map[color.toLowerCase()] || p.muted}"`);
 }
 function installChart(id,title,body,width,plotHeight,context,redraw,data=[],unit=''){
   const lines=chartFooter(context || chartContext(),Math.max(38,Math.floor(width/5.2))),height=plotHeight+lines.length*13+19;
