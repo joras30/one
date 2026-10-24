@@ -54,7 +54,7 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_FAILURES = 6
 MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
-VERSION = '33.0.2-fase1'
+VERSION = '33.0.3-fase1'
 SCHEMA_VERSION = 4
 AVATAR_COLORS = {'azul': 'Azul', 'naranja': 'Naranja', 'verde': 'Verde', 'violeta': 'Violeta'}
 AVATAR_DEFAULTS = {'tecnico': 'azul', 'supervisor': 'naranja', 'administrador': 'violeta', 'visitante': 'verde'}
@@ -320,6 +320,7 @@ def user_public(db, row):
             'must_change': bool(row['must_change']), 'must_complete_profile': bool(PRODUCTION_MODE and not foundation.profile(db, row['id'])['completed']),
             'avatar_color': avatar_preference(db, row['id'], effective_role(row))['color'],
             'avatar_style': avatar_preference(db, row['id'], effective_role(row))['style'],
+            'is_master': bool(PRODUCTION_MODE and foundation.setting(db, 'master_user_id') == row['id']),
             'supervisor_id': foundation.supervisor_id(db, row['id']), 'position': foundation.profile(db, row['id'])['position'],
             'activity_ids': [r[0] for r in db.execute(
                 'SELECT activity_id FROM user_activities WHERE user_id=? AND enabled=1', (row['id'],))]}
@@ -840,12 +841,23 @@ class Handler(BaseHTTPRequestHandler):
                         raise production.ApiError('Solo administración puede gestionar perfiles privilegiados.', 403)
                     if path.endswith('/restablecer'):
                         if role != 'tecnico':
-                            raise production.ApiError('Este restablecimiento es exclusivo para colaboradores.', 403)
+                            if not PRODUCTION_MODE or actor['role'] != 'administrador':
+                                raise production.ApiError('Solo administración puede recuperar estos accesos.', 403)
+                            if uid == foundation.setting(db, 'master_user_id'):
+                                raise production.ApiError('La cuenta maestra se recupera en la PC principal con RECUPERAR_ADMIN.bat; cierra primero la aplicación.', 403)
+                            if uid == actor['id']:
+                                raise production.ApiError('Para recuperar tu propia cuenta pide ayuda a otro administrador o utiliza la recuperación en la PC principal.', 403)
+                            actor_row = db.execute('SELECT * FROM users WHERE id=?', (actor['id'],)).fetchone()
+                            if not verify_password(actor_row, str(data.get('password', ''))):
+                                raise production.ApiError('Confirma tu contraseña de administrador para recuperar este acceso.', 403)
+                            reason = production._text(data.get('reason'), 'Motivo del restablecimiento', 1500, True)
+                        else:
+                            reason = 'Asignación de nueva clave temporal' if PRODUCTION_MODE else 'Restablecimiento al código de empleado'
                         salt = secrets.token_hex(16)
                         password = secrets.token_urlsafe(18) if PRODUCTION_MODE else target['username']
                         db.execute('UPDATE users SET salt=?,hash=?,must_change=? WHERE id=?', (salt, pw_hash(password, salt), int(PRODUCTION_MODE), uid))
                         db.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
-                        production.audit(db, actor['id'], 'users', uid, 'restablecer_clave', reason='Asignación de nueva clave temporal' if PRODUCTION_MODE else 'Restablecimiento al código de empleado')
+                        production.audit(db, actor['id'], 'users', uid, 'restablecer_clave', reason=reason)
                         reset_username = target['username']
                     else:
                         name = validate_name(data.get('name', target['name']))

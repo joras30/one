@@ -140,3 +140,28 @@ el bloqueo de sellos y las bajas V33 se implementarán y validarán en la fase 2
 - Mejor contraste en textos, información del perfil, controles y selector de avatar en modo claro.
 
 Para actualizar: cerrar la aplicación anterior, extraer el nuevo ZIP en otra carpeta y copiar la carpeta completa `datos_produccion` de la instalación anterior junto al nuevo ejecutable. No sobrescribir esa carpeta con datos de prueba. Los usuarios y perfiles ya guardados se conservan. La base de datos debe seguir en el disco local de la PC principal.
+
+## Actualización 33.0.3: lectura y recuperación de accesos
+
+La interfaz utiliza una paleta común de azul pizarra, superficies neutras y naranja
+institucional. Ambos modos ajustan textos, controles, tablas, paneles de detalle,
+indicadores y gráficas. Las gráficas y sus exportaciones SVG cambian junto al tema.
+Se comprueba contraste mínimo de 4,5:1 para el texto verificado.
+
+- Técnico: su supervisor de equipo o un administrador genera una clave temporal.
+- Supervisor: un administrador puede usar **Colaboradores → Restablecer acceso**.
+- Administrador adicional: otro administrador puede restablecerlo desde esa pantalla.
+- Para recuperar supervisores y administradores, quien autoriza escribe su propia
+  contraseña y el motivo. Se cierran las sesiones del titular, se genera una clave
+  temporal mostrada una vez y se exige cambiarla al entrar. El historial y los
+  permisos se conservan. El proceso queda registrado en la auditoría.
+- Cuenta maestra `admin`, o si no queda ningún administrador con acceso: en la PC
+  principal, detener el servidor con Ctrl+C y ejecutar **RECUPERAR_ADMIN.bat**,
+  situado junto a INICIAR_PRODUCCION.bat. Confirmar y escribir el motivo. El comando
+  muestra una clave temporal de la cuenta maestra; después iniciar el programa y
+  cambiarla al entrar. No elimina usuarios ni datos. Solo funciona con la
+  instalación cerrada y deja registro en auditoría, conforme a la V33.
+
+La pantalla de acceso incluye una ayuda desplegable para elegir el procedimiento.
+No se muestra la contraseña actual de ningún usuario ni se restablece una cuenta
+privilegiada a su código de empleado.

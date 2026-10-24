@@ -81,5 +81,25 @@ class FoundationHTTPTests(HTTPFixture,unittest.TestCase):
             status,_,_=self.admin.request('/api/base/backup-file?name='+invalid)
             self.assertIn(status,(400,404))
 
+    def test_admin_recovers_supervisor_and_other_admin_with_confirmation_and_audit(self):
+        password=self.complete(self.admin,'admin',self.key)
+        supervisor,client=self.create(self.admin,'sup_recuperacion','supervisor')
+        other,other_client=self.create(self.admin,'admin_recuperacion','administrador')
+        path=f"/api/usuarios/{supervisor['id']}/restablecer"
+        self.result(self.admin,path,{},expected=403)
+        self.result(self.admin,path,{'password':password},expected=400)
+        self.result(client,f"/api/usuarios/{other['id']}/restablecer",{},expected=403)
+        for person,target_client in ((supervisor,client),(other,other_client)):
+            result=self.result(self.admin,f"/api/usuarios/{person['id']}/restablecer",{'password':password,'reason':'Recuperación ficticia solicitada por titular'})
+            self.assertFalse(self.result(target_client,'/api/me')['logged'])
+            self.assertEqual(target_client.login('sup_recuperacion' if person is supervisor else 'admin_recuperacion',password)[0],401)
+            self.assertEqual(target_client.login('sup_recuperacion' if person is supervisor else 'admin_recuperacion',result['temporary_password'])[0],200)
+            self.assertTrue(self.result(target_client,'/api/me')['user']['must_change'])
+        self.result(self.admin,'/api/usuarios/1/restablecer',{'password':password,'reason':'Prueba'},expected=403)
+        users=self.result(self.admin,'/api/usuarios')['users']
+        self.assertTrue(next(user for user in users if user['username']=='admin')['is_master'])
+        entries=self.result(self.admin,'/api/auditoria')['entries']
+        self.assertTrue(any(row['action']=='restablecer_clave' and row['reason']=='Recuperación ficticia solicitada por titular' for row in entries))
+
 
 if __name__=='__main__':unittest.main()
