@@ -8,7 +8,7 @@
     {id:'verde',label:'Verde'}, {id:'violeta',label:'Violeta'}
   ]);
   const ROLE_LABELS = Object.freeze({
-    tecnico:'Colaborador',supervisor:'Supervisor',administrador:'Administrador',visitante:'Visitante',persona:'Persona'
+    tecnico:'Técnico',supervisor:'Supervisor',administrador:'Administrador',visitante:'Visitante',persona:'Persona'
   });
   const DEFAULT_COLORS = Object.freeze({tecnico:'azul',supervisor:'naranja',administrador:'violeta',visitante:'verde',persona:'azul'});
   const SIZES = [24,28,32,34,36,40,48,64,80,96];

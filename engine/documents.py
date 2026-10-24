@@ -332,7 +332,7 @@ def _excel_date(value: str, epoch1904: bool) -> str:
         raise ValueError("El libro contiene una fecha fuera del rango admitido.") from error
 
 
-def _read_xlsx(content: bytes) -> list[dict[str, str]]:
+def _read_xlsx(content: bytes, sheet_name=None, raw_matrix=False, strict_text_ids=False) -> list[dict[str, str]]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(content))
     except (zipfile.BadZipFile, OSError) as error:
@@ -363,7 +363,10 @@ def _read_xlsx(content: bytes) -> list[dict[str, str]]:
         sheets = workbook.findall(f"{{{NS}}}sheets/{{{NS}}}sheet")
         if not sheets:
             raise ValueError("El libro Excel no tiene hojas para importar.")
-        rel_id = sheets[0].get(f"{{{REL_NS}}}id")
+        selected = sheets[0] if sheet_name is None else next((sheet for sheet in sheets if sheet.get("name", "").casefold() == sheet_name.casefold()), None)
+        if selected is None:
+            raise ValueError("No existe la hoja solicitada: " + str(sheet_name))
+        rel_id = selected.get(f"{{{REL_NS}}}id")
         rels = _xml(archive, "xl/_rels/workbook.xml.rels")
         relationship = next((r for r in rels if r.get("Id") == rel_id), None)
         if relationship is None or not relationship.get("Type", "").endswith("/worksheet"):
@@ -391,6 +394,7 @@ def _read_xlsx(content: bytes) -> list[dict[str, str]]:
         if worksheet.find(f".//{{{NS}}}f") is not None:
             raise ValueError("El libro contiene fórmulas; conviértalas a valores antes de importar.")
         matrix = []
+        identity_columns=set()
         for row in worksheet.findall(f"{{{NS}}}sheetData/{{{NS}}}row"):
             values = {}
             next_index = 0
@@ -414,6 +418,8 @@ def _read_xlsx(content: bytes) -> list[dict[str, str]]:
                 typ = cell.get("t", "n")
                 val = cell.find(f"{{{NS}}}v")
                 raw = val.text if val is not None and val.text is not None else ""
+                if strict_text_ids and ci in identity_columns and raw and typ in {"n","b"}:
+                    raise ValueError(f"Celda {ref}: serie, sello o código guardado como número. Utiliza texto en la plantilla para conservar ceros iniciales.")
                 if typ == "inlineStr":
                     text = "".join(t.text or "" for t in cell.iter(f"{{{NS}}}t"))
                 elif typ == "s":
@@ -440,13 +446,15 @@ def _read_xlsx(content: bytes) -> list[dict[str, str]]:
                     raise ValueError("El libro contiene un tipo de celda no admitido.")
                 values[ci] = _plain(text)
             if values:
+                if strict_text_ids and not identity_columns:
+                    identity_columns={ci for ci,value in values.items() if normalize_header(value) in {"serie","sap","articulo_sap","sello_1","sello_2","responsible","numero_de_empleado"}}
                 matrix.append([values.get(index, "") for index in range(max(values) + 1)])
                 if len(matrix) > MAX_ROWS + 1:
                     raise ValueError(f"El archivo supera el máximo de {MAX_ROWS} filas.")
-        return _records(matrix)
+        return matrix if raw_matrix else _records(matrix)
 
 
-def read_table(filename: str, content: bytes) -> list[dict[str, str]]:
+def read_table(filename: str, content: bytes, strict_text_ids=False) -> list[dict[str, str]]:
     """Lee la primera tabla sin evaluar fórmulas ni ejecutar contenido activo."""
     if not isinstance(content, bytes):
         raise ValueError("El contenido del archivo no es válido.")
@@ -457,7 +465,7 @@ def read_table(filename: str, content: bytes) -> list[dict[str, str]]:
         return _read_csv(content)
     if extension == ".xlsx":
         try:
-            return _read_xlsx(content)
+            return _read_xlsx(content, strict_text_ids=strict_text_ids)
         except (zipfile.BadZipFile, RuntimeError, OSError) as error:
             raise ValueError("No se pudo leer el libro XLSX; compruebe su integridad.") from error
     raise ValueError("Seleccione un archivo CSV o XLSX, sin macros.")

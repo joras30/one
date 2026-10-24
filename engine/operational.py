@@ -312,6 +312,9 @@ def _order_summary(db, row, user, cutoff=""):
               "process_conflict": bool(row["process_conflict"]), "notes": row["notes"], "deliveries": len(events),
               "last_date": max((e["work_date"] for e in events), default=""), "created_at": row["created_at"],
               "closed_at": row["closed_at"], "scope": "orden"}
+    if p.phase2.enabled(db):
+        provider=db.execute("SELECT provider FROM p2_receipt_providers WHERE order_id=?",(row["id"],)).fetchone()
+        result["provider"]=provider[0] if provider else ""
     result["administrative_state"] = row["state"]
     result["as_of"] = cutoff or today
     result["progress_pct"] = round(received / expected * 100, 6) if expected else None
@@ -421,6 +424,9 @@ def save_order(db, user, data):
         for candidate in all_orders:
             key = p._fold(candidate["process"])
             db.execute("UPDATE receipt_orders SET process_conflict=? WHERE id=?", (int(not key or frequencies[key] > 1 or candidate["source_process_conflict"]), candidate["id"]))
+        if p.phase2.enabled(db) and "provider" in data:
+            provider=p._text(data["provider"],"Proveedor",150)
+            db.execute("INSERT INTO p2_receipt_providers VALUES(?,?) ON CONFLICT(order_id) DO UPDATE SET provider=excluded.provider",(order_id,provider))
         result = _order_summary(db, _order_row(db, order_id), user)
         audit(db, user, "orden", order_id, "actualizar" if existing else "crear", dict(existing) if existing else None, result, reason)
     return {"ok": True, "order": result}

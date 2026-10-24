@@ -20,6 +20,7 @@ import unicodedata
 import uuid
 
 import operational
+import phase2
 
 
 MANAGERS = {"supervisor", "administrador"}
@@ -284,6 +285,8 @@ def _expanded_fields(db, fields):
         field = dict(original)
         if field.get("source") in {"voltajes", "condiciones", "marcas"}:
             field["options"] = [r[0] for r in db.execute("SELECT label FROM catalog WHERE kind=? AND active=1 ORDER BY label", (field["source"],))]
+        if phase2.enabled(db) and field.get("source") in {"modelos","piezas","puestos","tipos"}:
+            field["options"]=[r[0] for r in db.execute("SELECT label FROM p2_catalog WHERE kind=? AND active=1 ORDER BY label",(field["source"],))]
         if field["key"] == "clasificacion" and field["type"] == "select":
             # Las clasificaciones del maestro están abiertas; no son un enum SAP.
             has_configs = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sap_configurations'").fetchone()
@@ -303,6 +306,7 @@ def _activity(db, activity_id, version=None):
         raise ApiError("La versión histórica de la actividad no existe.", 409)
     return {"id": row["id"], "name": definition["name"], "mode": definition["mode"], "unit": definition["unit"],
             "active": bool(row["active"]), "version": definition["version"],
+            "illustration": (db.execute("SELECT illustration FROM p2_activity_preferences WHERE activity_id=?",(activity_id,)).fetchone() or ["◈"])[0] if phase2.enabled(db) else "◈",
             "fields": _expanded_fields(db, json.loads(definition["fields_json"]))}
 
 
@@ -313,6 +317,11 @@ def _activities(db, user):
     result = []
     for activity_id in ids:
         activity = _activity(db, activity_id)
+        if phase2.enabled(db) and user["role"]=="tecnico":
+            activity['permissions']=[permission for permission in phase2.PERMISSIONS if phase2.assignment(db,user['id'],activity_id,permission)]
+            activity["assigned"] = bool(phase2.assignment(db,user["id"],activity_id))
+            if not any(phase2.assignment(db,user["id"],activity_id,perm) for perm in ("ver","capturar","carga_masiva","proponer_baja","panel")):continue
+            result.append(activity);continue
         activity["assigned"] = activity_id in assigned or user["role"] in MANAGERS
         if user["role"] == "tecnico" and activity_id not in assigned | historical:
             continue
@@ -339,7 +348,7 @@ def _validate_fields(fields, mode):
         field = {"key": key, "label": _text(original.get("label"), "Nombre del campo", 90, True),
                  "type": type_, "required": bool(original.get("required", False))}
         if original.get("source"):
-            if original["source"] not in {"voltajes", "condiciones", "marcas"} or type_ != "select":
+            if original["source"] not in {"voltajes", "condiciones", "marcas", "modelos", "piezas", "puestos", "tipos"} or type_ != "select":
                 raise ApiError("Origen de catálogo inválido.")
             field["source"] = original["source"]
         if type_ == "select":
@@ -387,6 +396,13 @@ def _save_activity(db, user, data):
             raise ApiError("El tipo de captura de una actividad existente se conserva. Crea otra actividad para cambiarlo.")
         unit = _text(data.get("unit", previous["unit"] if previous else ""), "Unidad de producción", 40, True)
         fields = _validate_fields(data.get("fields", previous["fields"] if previous else []), mode)
+        if phase2.enabled(db):
+            keys={field['key'] for field in fields}
+            if existing_id!='sellado' and keys & {'sello_1','sello_2'}:raise ApiError('Los sellos físicos se registran únicamente en Sellado de medidores, la actividad unificada.')
+            if 'sap' in keys:
+                if 'clasificacion' not in keys:fields.append(_field('clasificacion','Valoración','select',False,phase2.VALUATIONS))
+                if 'sap_config_id' not in keys:fields.append(_field('sap_config_id','Artículo SAP y valoración',required=False,maximum=160))
+
         active = bool(data.get("active", previous["active"] if previous else True))
         activity_id = existing_id or "actividad_" + uuid.uuid4().hex[:14]
         version = previous["version"] + 1 if previous else 1
@@ -399,6 +415,10 @@ def _save_activity(db, user, data):
                        (activity_id, name, mode, unit, int(active), version, timestamp))
         db.execute("INSERT INTO activity_versions(activity_id,version,name,mode,unit,fields_json,created_at) VALUES(?,?,?,?,?,?,?)",
                    (activity_id, version, name, mode, unit, _json(fields), timestamp))
+        if phase2.enabled(db):
+            illustration=data.get("illustration",previous.get("illustration","◈") if previous else "◈")
+            if illustration not in ["◈","⌕","⇣","⚙","✓"]:raise ApiError("Selecciona una ilustración de la galería.")
+            db.execute("INSERT INTO p2_activity_preferences VALUES(?,?) ON CONFLICT(activity_id) DO UPDATE SET illustration=excluded.illustration",(activity_id,illustration))
         result = _activity(db, activity_id)
         audit(db, user, "actividad", activity_id, "versionar" if previous else "crear", previous, result)
     return {"ok": True, "activity": result}
@@ -411,6 +431,8 @@ def _save_sap(db, user, data):
 def _responsible(db, user, payload, activity_id, existing=None):
     requested = payload.get("responsible_id", existing["responsible_id"] if existing else user["id"])
     responsible_id = _integer(requested, "Responsable", 1, 2**63 - 1)
+    if phase2.enabled(db) and user["role"] == "tecnico" and responsible_id != user["id"]:
+        raise ApiError("Solo puedes registrar tu propia producción.",403)
     if user["role"] == "tecnico":
         # La identidad operativa procede de la sesión, nunca del navegador.
         responsible_id = user["id"]
@@ -419,7 +441,7 @@ def _responsible(db, user, payload, activity_id, existing=None):
         raise ApiError("Selecciona un colaborador activo.")
     if person["effective_role"] == "visitante":
         raise ApiError("Una cuenta visitante no puede ser responsable operativo.", 403)
-    if person["effective_role"] == "tecnico" and not existing:
+    if person["effective_role"] == "tecnico" and not existing and not phase2.enabled(db):
         assignment = db.execute("SELECT 1 FROM user_activities WHERE user_id=? AND activity_id=? AND enabled=1", (responsible_id, activity_id)).fetchone()
         if not assignment:
             raise ApiError("El colaborador no tiene esta actividad habilitada.", 403)
@@ -436,7 +458,7 @@ def _clean_data(db, activity, raw, existing=None):
     unknown = set(raw) - known - {"desviacion_pct", "fuera_tolerancia"}
     if unknown:
         raise ApiError("Hay campos que no pertenecen a esta versión de actividad: " + ", ".join(sorted(unknown)[:5]))
-    raw = operational.prepare_sap(db, activity, raw, existing)
+    raw = phase2.prepare_sap(db, activity, raw, existing) if phase2.enabled(db) else operational.prepare_sap(db, activity, raw, existing)
     old_data = existing["data"] if existing else {}
     clean = {}
     for field in fields:
@@ -451,10 +473,10 @@ def _clean_data(db, activity, raw, existing=None):
             clean[key] = "" if kind != "checkbox" else False
             continue
         if kind == "text":
-            if key in {"serie", "sap"} and not isinstance(value, str):
+            if key in {"serie", "sap", "sello_1", "sello_2"} and not isinstance(value, str):
                 raise ApiError(f"{field['label']}: introduce el identificador como texto para conservar ceros iniciales.")
             clean[key] = _text(value, field["label"], int(field.get("maximum", 1500 if key == "observaciones" else 500)))
-            if key in {"serie", "sap"} and len(clean[key]) > 60:
+            if key in {"serie", "sap", "sello_1", "sello_2"} and len(clean[key]) > 60:
                 raise ApiError(f"{field['label']}: máximo 60 caracteres.")
         elif kind == "select":
             text = _text(value, field["label"], 150)
@@ -508,7 +530,7 @@ def _serialize(row, db=None):
             old_value = data[field["key"]]
             if old_value not in field.get("options", []):
                 field["options"] = [*field.get("options", []), old_value]
-    return {"id": row["id"], "legacy_id": row["legacy_id"], "activity_id": row["activity_id"],
+    result = {"id": row["id"], "legacy_id": row["legacy_id"], "activity_id": row["activity_id"],
             "activity_name": row["activity_name"], "activity_version": row["activity_version"],
             "mode": row["event_mode"], "unit": row["unit"], "work_date": row["work_date"],
             "responsible_id": row["responsible_id"], "responsible_name": row["responsible_name"],
@@ -517,6 +539,10 @@ def _serialize(row, db=None):
             "quantity": row["quantity"], "data": data, "fields": fields, "state": row["state"],
             "revision": row["revision"], "created_at": row["created_at"], "updated_at": row["updated_at"],
             "import_id": row["import_id"]}
+    if db is not None and phase2.enabled(db):
+        details=db.execute("SELECT x.*,c.number cycle_number FROM p2_event_details x LEFT JOIN p2_cycles c ON c.id=x.cycle_id WHERE x.event_id=?",(row["id"],)).fetchone()
+        result["traceability"]=dict(details) if details else None
+    return result
 
 
 def _event(db, event_id):
@@ -596,7 +622,8 @@ def _save_event(db, user, payload, import_id=None):
         return {"ok": True, "record": _event(db, existing_operation["id"]), "already_saved": True}
     normalized = _normalized_payload(db, user, payload)
     previous = []
-    if normalized["mode"] == "individual":
+    if phase2.enabled(db):phase2.before_event(db,user,payload,normalized,bulk=bool(import_id))
+    if not phase2.enabled(db) and normalized["mode"] == "individual":
         previous = _prior_events(db, normalized["activity_id"], normalized["data"]["serie"])
         if previous and payload.get("confirm_reentry") is not True:
             raise _confirmation_error(previous, normalized["work_date"], user)
@@ -612,6 +639,9 @@ def _save_event(db, user, payload, import_id=None):
                          _json(normalized["data"]), revision, operation_id, identity, import_id, timestamp, timestamp))
     event = _event(db, cursor.lastrowid)
     operational.attach_receipt(db, user, event)
+    if phase2.enabled(db):
+        phase2.after_event(db,user,payload,event)
+        event=_event(db,event["id"])
     audit(db, user, "registro", event["id"], "importar" if import_id else "crear", after=event)
     return {"ok": True, "record": event}
 
@@ -630,12 +660,15 @@ def _correct_event(db, user, event_id, payload):
         merged = dict(payload)
         merged["data"] = {**existing["data"], **payload.get("data", {})}
         normalized = _normalized_payload(db, user, merged, existing)
+        if phase2.enabled(db):phase2.before_event(db,user,merged,normalized,existing)
         if normalized["mode"] == "individual":
             previous = _prior_events(db, existing["activity_id"], normalized["data"]["serie"], existing["id"])
             if previous and normalized["data"].get("serie") != existing["data"].get("serie") and payload.get("confirm_reentry") is not True:
                 raise _confirmation_error(previous, normalized["work_date"], user)
         db.execute("UPDATE production_events SET work_date=?,quantity=?,unit=?,data_json=?,updated_at=? WHERE id=?",
                    (normalized["work_date"], normalized["quantity"], normalized["unit"], _json(normalized["data"]), now(), event_id))
+        if phase2.enabled(db) and payload.get("duplicate_note"):
+            db.execute("UPDATE p2_event_details SET duplicate_note=? WHERE event_id=?",(_text(payload["duplicate_note"],"Justificación",1500,True),event_id))
         result = _event(db, event_id)
         operational.attach_receipt(db, user, result, existing=existing)
         audit(db, user, "registro", event_id, "corregir", existing, result, reason)
@@ -705,7 +738,7 @@ def _filters(user, query, allow_visitor=False):
         values.append(_text(query["unit"], "Unidad", 120, True))
     if str(query.get("voltage_missing", "")) == "1":
         clauses.append("COALESCE(json_extract(e.data_json,'$.voltaje'),'')=''")
-    for param, field in (("sap", "sap"), ("voltage", "voltaje"), ("condition", "condicion"), ("brand", "marca"), ("model", "modelo")):
+    for param, field in (("sap", "sap"), ("voltage", "voltaje"), ("condition", "condicion"), ("brand", "marca"), ("model", "modelo"), ("valuation", "clasificacion")):
         if query.get(param):
             clauses.append(f"json_extract(e.data_json,'$.{field}')=?")
             values.append(_text(query[param], param, 150))
@@ -1219,6 +1252,7 @@ def handle_get(db, user, path, query):
     if path == "/api/historial":
         return _history(db, user, query)
     if path == "/api/dashboard":
+        if phase2.enabled(db) and user["role"]=="tecnico" and query.get("activity_id"):phase2.access(db,user,query["activity_id"],"panel")
         return _dashboard(db, user, query)
     if path == "/api/recepciones":
         return {"receipts": _receipts(db, user, query)}
@@ -1233,8 +1267,11 @@ def handle_post(db, user, path, data):
     if not isinstance(data, dict):
         raise ApiError("Se esperaba un objeto de datos.")
     if path == "/api/actividades":
+        if phase2.enabled(db):phase2.f.administrator(user)
         return _save_activity(db, user, data)
     if path == "/api/sap":
+        if phase2.enabled(db):
+            with _transaction(db):return phase2.save_article(db,user,data)
         return _save_sap(db, user, data)
     if path in {"/api/eventos", "/api/registros"}:
         with _transaction(db):
