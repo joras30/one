@@ -4,7 +4,7 @@
 
 La producción local se prepara por fases, conforme a la especificación V33 del
 solicitante. **Esta entrega habilita instalación, usuarios, roles, perfil,
-auditoría, respaldo diario dual y restauración. La captura operativa permanece
+auditoría, respaldo diario en una o dos carpetas de la operativa y restauración. La captura operativa permanece
 bloqueada hasta validar esta base y completar la fase 2.**
 
 El paquete Windows x64 se construye y prueba en Windows y se entrega como versión

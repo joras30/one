@@ -46,12 +46,43 @@ class FoundationTests(unittest.TestCase):
         with self.assertRaises(p.ApiError):f.bootstrap(app)
         with app.database() as db:self.assertEqual(db.execute('SELECT username FROM users').fetchone()[0],'anterior')
 
-    def test_same_disk_folders_are_not_misrepresented_as_dual_physical_backup(self):
-        with self.assertRaises(p.ApiError):self.configure_backup()
+    def test_operational_folders_on_the_same_volume_are_accepted_without_physical_disk_claim(self):
+        settings=self.configure_backup()['settings']
+        self.assertEqual(settings['policy'],'carpetas_operativas')
+        self.assertNotIn('confirmed_distinct_media',settings)
         with self.media:
             for paths in ([str(self.targets[0])]*2,[str(app.DATA_DIR/'copy'),str(self.targets[1])],['relative',str(self.targets[1])]):
                 with self.subTest(paths=paths),self.assertRaises(p.ApiError):
                     f.save_backup_settings(app,self.user,{'daily_time':'18:00','targets':paths,'confirmed_distinct_media':True})
+
+    def test_single_operational_folder_receives_verified_manual_and_scheduled_copies(self):
+        f.save_backup_settings(app,self.user,{'daily_time':'18:00','targets':[str(self.targets[0])]})
+        result=f.run_backup(app,self.user)
+        self.assertTrue(result['ok']);self.assertEqual(len(result['copies']),1)
+        self.assertEqual(f.digest_file(Path(result['copies'][0]['path'])),result['sha256'])
+        self.assertTrue(f.BackupScheduler(app).tick()['ok'])
+
+    def test_backup_list_uses_creation_date_and_marks_exactly_one_latest(self):
+        with patch.object(app,'utcnow',return_value='2026-01-01T12:00:00Z'):
+            old=f.run_backup(app,self.user)
+        with patch.object(app,'utcnow',return_value='2026-02-01T12:00:00Z'):
+            recent=f.run_backup(app,self.user)
+        import os
+        os.utime(old['primary'],(2000000000,2000000000))
+        files=f.backup_status(app,self.user)['files']
+        self.assertEqual(files[0]['path'],recent['primary'])
+        self.assertTrue(files[0]['latest']);self.assertFalse(files[1]['latest'])
+        self.assertEqual(files[0]['created_at'],'2026-02-01T12:00:00+00:00')
+
+    def test_restore_handles_operational_folder_names_and_windows_unc_uri(self):
+        from pathlib import PureWindowsPath
+        self.assertEqual(f.readonly_uri(PureWindowsPath(r'\\servidor\Publico\Laboratorio #1\respaldo.db')),
+                         'file:////servidor/Publico/Laboratorio%20%231/respaldo.db?mode=ro')
+        folder=self.root/'Operativa #1'
+        f.save_backup_settings(app,self.user,{'daily_time':'18:00','targets':[str(folder)]})
+        backup=f.run_backup(app,self.user)
+        preview=f.restore_preview(app,self.user,{'path':backup['copies'][0]['path']})
+        self.assertEqual(preview['sha256'],backup['sha256'])
 
     def test_consistent_backup_reaches_two_external_destinations_with_matching_hashes(self):
         with self.media:

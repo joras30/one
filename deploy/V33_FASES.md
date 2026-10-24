@@ -57,24 +57,51 @@ HTTP de recuperación maestra. Otra instancia no puede ejecutarla con el servido
 
 ## Respaldos y restauración
 
-Configura dos carpetas en unidades distintas entre sí y distintas del disco de
-la base: por ejemplo, un disco externo y una ubicación de red en otro equipo.
-Dos carpetas del mismo disco se rechazan. El administrador debe confirmar que
-corresponden a ubicaciones físicas diferentes; los identificadores de volumen no
-permiten demostrar por sí solos cómo está construido el almacenamiento físico.
+Configura una o dos carpetas de las unidades de la operativa, por ejemplo
+`I:\LaboratorioMedidas\Respaldos` y, opcionalmente,
+`H:\LaboratorioMedidas\Respaldos`. También se admiten rutas UNC. Las rutas
+corresponden a la PC principal; su usuario de Windows debe poder crear archivos
+allí. Se aceptan carpetas del mismo servidor, sin exigir USB ni otro disco físico.
+Esta política sustituye la exigencia de discos diferentes de la entrega anterior,
+por instrucción del solicitante. La base activa sigue en el disco local.
 
-La copia programada se ejecuta mientras la PC y la aplicación están encendidas.
-Si la PC estaba apagada a la hora programada, el sistema recupera la copia pendiente al volver a iniciar la aplicación.
-Cada copia utiliza un snapshot consistente de SQLite y compara su SHA-256. Si un
-destino falla se conserva la copia local, se intenta el otro y se informa
-**Incompleto**. No se declara éxito de dos copias si falta una. Los fallos se
-reintentan sin convertir carpetas de un montaje desconectado en destinos válidos.
+Pulsa **Guardar y comprobar carpetas**, y después **Crear respaldo ahora**.
+El programa guarda una copia local y copia a cada destino configurado, comprobando
+su SHA-256. Si un destino falla, conserva la copia local e intenta los demás.
+**Verificado** significa que los destinos configurados en esa ejecución se
+copiaron correctamente; no certifica independencia física del almacenamiento.
+Sin destinos configurados se indica que existe solo la copia local.
 
-Para restaurar, elige un archivo de las carpetas configuradas, verifica la vista
-previa y revisa las cantidades. Confirma con tu contraseña, un motivo y la palabra
-`RESTAURAR`. Se guarda una copia previa, se reemplaza la base con las solicitudes
-pausadas y se cierran las sesiones. Entra con las credenciales del respaldo.
-Se rechaza restaurar una demo sobre producción.
+La programación funciona mientras la PC y la aplicación estén encendidas y las
+unidades accesibles. Si estaban apagadas a la hora programada, al iniciar se
+intenta recuperar la copia pendiente. No es necesario descargar manualmente cada
+respaldo cuando ya se guardan automáticamente en las carpetas de red.
+
+La lista muestra fecha, hora, tipo y tamaño, con **Más reciente** en la primera
+fila. Cada archivo es una copia completa. Para guardar el estado actual, crea una
+copia nueva y descarga esa primera fila. Para corregir un problema, restaura una
+copia anterior al problema; restaurar no combina ni suma registros.
+
+El navegador normalmente descarga el archivo .db a **Descargas**. Puedes guardarlo
+en la carpeta de respaldo de la operativa. No se coloca sobre `laboratorio.db` ni
+se mueve la base activa al servidor de archivos. Para restaurar un archivo que
+esté fuera de las ubicaciones configuradas, cópialo a
+`datos_produccion\backups` de la instalación y pulsa **Actualizar lista y estado**.
+También puedes pegar la ruta completa de una copia de una carpeta configurada.
+
+En **Restaurar un respaldo**, selecciona el archivo, pulsa **Verificar y mostrar
+vista previa** y revisa las cantidades. Confirma con motivo, contraseña de
+administración y `RESTAURAR`. La aplicación guarda una copia previa, reemplaza los
+datos actuales y cierra las sesiones. Entra con las credenciales del respaldo.
+Se rechaza restaurar una demo sobre producción. Para una PC de reemplazo, utiliza
+esta misma versión, completa su acceso inicial y coloca el respaldo en su carpeta
+de copias para seguir el mismo procedimiento.
+
+El archivo contiene la base completa, incluidos perfiles y verificadores de
+contraseña. Los permisos de la aplicación no limitan la lectura directa de ese
+archivo con otras herramientas. Utiliza los permisos de Windows de la carpeta
+para decidir quién puede acceder a los respaldos. La aplicación no cambia permisos
+de las unidades compartidas de la empresa.
 
 ## Apariencia y explicación
 

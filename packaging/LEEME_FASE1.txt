@@ -4,8 +4,8 @@ LABORATORIO DE MEDIDAS - V33 FASE 1 PARA VALIDACION
 2. Abre INICIAR_PRODUCCION.bat. No necesitas instalar Python ni tener Internet.
 3. La consola muestra el usuario admin y una clave temporal una sola vez.
    Conservala mientras entras. Despues del primer acceso debes cambiarla.
-4. Completa el perfil. Abre Instalacion y respaldos para configurar dos destinos
-   externos, en unidades fisicas diferentes entre si y del disco principal.
+4. Completa el perfil. Abre Instalacion y respaldos para configurar una o dos carpetas de respaldo
+   en las unidades de red de la operativa. No se requiere USB.
 5. Crea los accesos del personal. Sus claves temporales se muestran al crearlos.
 6. Para compartir en la oficina, usa INICIAR_RED.bat e introduce la IP privada
    fija de esta PC. Los demas equipos abren ese enlace en su navegador.
@@ -36,3 +36,17 @@ archivos del programa conservando datos_produccion. Nunca borres esa carpeta.
 El paquete no incluye datos reales ni claves precargadas. Solo es para Windows
 de 64 bits. Su Python va incluido (licencia PSF). Empaquetado con PyInstaller,
 licencia GPL con excepcion que permite distribuir esta aplicacion compilada.
+
+ACTUALIZACION 33.0.2 - RESPALDOS
+Las carpetas pueden estar en el mismo servidor. Crear respaldo ahora guarda una
+copia local y otra en cada destino configurado. Verificado comprueba las copias,
+no discos fisicos distintos. La lista marca Mas reciente y muestra fecha y hora.
+Cada archivo .db contiene una copia completa. Para guardar el estado actual basta
+crear un respaldo nuevo y descargar el primero. No necesitas descargar todos.
+Para recuperar una copia descargada: copiarla a datos_produccion\backups,
+Actualizar lista y estado, seleccionarla en Restaurar un respaldo, verificar su
+vista previa y confirmar con motivo, clave de administrador y RESTAURAR.
+No reemplazar manualmente laboratorio.db. Restaurar reemplaza los datos actuales,
+no suma registros. La aplicacion crea una copia previa y cierra las sesiones.
+Las carpetas de respaldo necesitan permisos de Windows adecuados: los roles de
+la aplicacion no impiden leer directamente el archivo de la base de datos.

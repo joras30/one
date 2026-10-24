@@ -40,7 +40,7 @@ jobs:
               if (error.status !== 404) throw error;
               release = (await github.rest.repos.createRelease({...context.repo,tag_name:tag,target_commitish:context.sha,
                 name:'V33 · Fase 1 local para validación',prerelease:true,
-                body:'Base local Windows x64: usuarios, roles, perfiles, auditoría, respaldo dual y restauración. Python incluido; sin Internet para ejecutar. Captura operativa V33 bloqueada hasta validar esta fase y completar la fase 2. Extraer todo el ZIP y abrir INICIAR_PRODUCCION.bat. El paquete no incluye datos ni claves precargadas.'})).data;
+                body:'Base local Windows x64: usuarios, roles, perfiles, auditoría y restauración. Respaldos en una o dos carpetas de la operativa, sin exigir USB; lista con fecha y copia más reciente identificada. Python incluido; sin Internet para ejecutar. Captura operativa V33 bloqueada hasta completar la fase 2. Extraer todo el ZIP y abrir INICIAR_PRODUCCION.bat. El paquete no incluye datos ni claves precargadas.'})).data;
             }
             for (const name of ['LABORATORIO_V33_FASE1_WINDOWS.zip','LABORATORIO_V33_FASE1_WINDOWS.sha256.txt']) {
               if (release.assets.some(asset=>asset.name===name)) continue;
