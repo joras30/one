@@ -52,11 +52,20 @@ with tempfile.TemporaryDirectory(prefix='laboratorio-exe-ficticio-') as temp:
         _,me=request('/api/me');csrf=me['csrf'];assert me['user']['must_complete_profile']
         assert request('/api/profile',{'full_name':'Maestro ficticio del EXE','identity_number':'00000000001','birth_date':'1990-01-01','phone':'0000000000','fleet':'','position':'Administración ficticia'})[0]==200
         assert request('/api/base/status')[0]==200
-        assert request('/api/eventos',{'activity_id':'revision'})[0]==423
-        for asset in ['app.js','app.css','table-tools.js','drilldown.js','profile-avatars.js','foundation-ui.js','foundation-ui.css','edesur.png']:
+        assert me['delivered_phase']==2 and me['validated_phase']==1
+        for kind,label in [('marcas','Marca ficticia'),('condiciones','Apto ficticio')]:
+            assert request('/api/p2/catalog/save',{'kind':kind,'label':label})[0]==200
+        assert request('/api/p2/article',{'code':'00010','valuation':'Nuevo','description':'Material ficticio'})[0]==200
+        assert request('/api/p2/catalog/ready',{})[0]==200
+        article=request('/api/p2/catalog')[1]['articles'][0]
+        event={'activity_id':'sellado','work_date':'2026-10-24','operation_id':'exe-ficticio-1','data':{'serie':'00001','marca':'Marca ficticia','sap_config_id':article['id'],'color':'AZUL','sello_1':'000S1','sello_2':'000S2'}}
+        assert request('/api/eventos',event)[0]==200
+        event['operation_id']='exe-ficticio-2';event['data']['serie']='00002'
+        assert request('/api/eventos',event)[0]==409
+        for asset in ['app.js','app.css','table-tools.js','drilldown.js','profile-avatars.js','foundation-ui.js','foundation-ui.css','phase2-ui.js','phase2.css','edesur.png']:
             assert request('/'+asset)[0]==200,asset
         assert request('/api/base/backup-now',{})[1]['status']=='incompleto'
         assert request('/api/auditoria/integridad')[1]['ok']
-        print('EXE Windows: arranque, clave única, contraseña propia, perfil, RBAC, activos, respaldo y auditoría correctos; operación bloqueada hasta validar fase 2.')
+        print('EXE Windows: arranque, clave única, contraseña propia, perfil, RBAC, activos, respaldo y auditoría correctos; captura y bloqueo de sellos de fase 2 correctos.')
     finally:
         process.terminate();process.wait(timeout=15);process.stdout.close()

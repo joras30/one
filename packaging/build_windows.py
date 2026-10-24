@@ -12,14 +12,14 @@ subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--clean','--one
     '--name','LaboratorioMedidas','--add-data','APLICACION_ACTUAL/static;static',
     '--add-data','APLICACION_ACTUAL/assets;assets','--add-data','APLICACION_ACTUAL/catalogos.json;.',
     'APLICACION_ACTUAL/app.py'],cwd=ROOT,check=True)
-folder=ROOT/'dist/LABORATORIO_V33_FASE1_WINDOWS'
+folder=ROOT/'dist/LABORATORIO_V34_FASE2_WINDOWS'
 shutil.copytree(ROOT/'dist/LaboratorioMedidas',folder,dirs_exist_ok=True)
-for name in ['INICIAR_PRODUCCION.bat','INICIAR_RED.bat','INICIAR_PRUEBAS.bat','RECUPERAR_ADMIN.bat','LEEME_FASE1.txt']:
+for name in ['INICIAR_PRODUCCION.bat','INICIAR_RED.bat','INICIAR_PRUEBAS.bat','RECUPERAR_ADMIN.bat','LEEME_FASE2.txt']:
     shutil.copy2(ROOT/'packaging'/name,folder/name)
 license_file=Path(sys.base_prefix)/'LICENSE.txt'
 if license_file.exists():shutil.copy2(license_file,folder/'LICENCIA_PYTHON.txt')
 subprocess.run([sys.executable,str(ROOT/'packaging/smoke_windows.py'),str(folder/'LaboratorioMedidas.exe')],check=True)
-archive=ROOT/'dist/LABORATORIO_V33_FASE1_WINDOWS.zip'
+archive=ROOT/'dist/LABORATORIO_V34_FASE2_WINDOWS.zip'
 with ZipFile(archive,'w',ZIP_DEFLATED) as package:
     for path in folder.rglob('*'):
         if path.is_file():

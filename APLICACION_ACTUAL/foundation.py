@@ -62,14 +62,15 @@ def supervisor_id(db, user_id):
 
 
 def assign_team(db, actor, user_id, data):
-    selected = actor['id'] if actor['role'] == 'supervisor' else data.get('supervisor_id')
+    import phase2
+    selected = data.get('supervisor_id', actor['id'] if actor['role']=='supervisor' else None) if phase2.enabled(db) else actor['id'] if actor['role']=='supervisor' else data.get('supervisor_id')
     if selected not in (None, ''):
         selected = p._integer(selected, 'Supervisor', 1, 2**63 - 1)
         person = db.execute('SELECT access_role,active FROM users WHERE id=?', (selected,)).fetchone()
         if not person or not person['active'] or person['access_role'] != 'supervisor':
             raise p.ApiError('Selecciona un supervisor activo.')
         db.execute('INSERT INTO user_supervisors VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET supervisor_id=excluded.supervisor_id', (user_id, selected))
-    elif actor['role'] == 'administrador' and 'supervisor_id' in data:
+    elif (actor['role'] == 'administrador' or phase2.enabled(db)) and 'supervisor_id' in data:
         db.execute('DELETE FROM user_supervisors WHERE user_id=?', (user_id,))
 
 
@@ -337,6 +338,7 @@ def restore_confirm(app, user, data):
             raise p.ApiError('La contraseña de administración no coincide.', 403)
     if digest_file(preview['path']) != preview['sha256']:
         raise p.ApiError('El respaldo cambió después de verificarlo. Crea otra vista previa.', 409)
+    with app.database() as db:was_phase_two=setting(db,'implemented_phase',1)>=2
     safety = run_backup(app, user, 'antes_restauracion')
     with app.database() as db:
         db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
@@ -345,6 +347,9 @@ def restore_confirm(app, user, data):
     try:
         checked_copy(preview['path'], app.DB_PATH, preview['sha256'])
         app.init_db()
+        if was_phase_two:
+            import phase2
+            phase2.install(app)
         with app.database() as db, p._transaction(db):
             db.execute('DELETE FROM sessions')
             # El usuario anterior puede no existir en la copia: la identidad del

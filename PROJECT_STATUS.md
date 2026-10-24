@@ -1,19 +1,18 @@
 # Laboratorio de Medidas — Control de Producción
 
-## Especificación vigente y entrega por fases
+## Estado vigente: V34, fase 2 para validación
 
-El solicitante sustituyó la especificación por **V33**, con validación entre fases.
-La versión `33.0-fase1` implementa la base local para revisión: administrador maestro,
-perfil y contraseña obligatorios, equipos por supervisor, auditoría administrativa,
-respaldo dual programado y restauración verificada. La producción comienza sin
-registros; las escrituras operativas están bloqueadas hasta la fase 2. El paquete
-Windows se construye y prueba mediante `windows-local.yml`, con Python incluido.
+La fase 1 fue validada por el solicitante. La fase 2 habilita catálogo oficial por
+importación local, actividades, captura rápida, Excel con validación previa,
+sellado con unicidad permanente número+color, ciclos, bajas y piezas, permisos
+temporales, recepciones parciales y resumen SAP. Fichas interactivas con datos
+personales protegidos por rol; todos los supervisores gestionan todos los técnicos.
+La producción nueva empieza vacía. No se publica el Excel ni personal real.
 
-Las mejoras de interacción y avatares de la etapa 2.2 se conservan en la demo.
-Las secciones históricas siguientes describen entregas V6/2.1; no deben confundirse
-con operación completa V33. Guía y criterios: `deploy/V33_FASES.md`. Resumen para
-continuar: `deploy/PROMPT_CONTINUIDAD_V33.md`. El Excel oficial de siete hojas se
-revisó como referencia privada, sin importar personas ni registros reales.
+Guía vigente: `deploy/V34_FASE2.md`. Entrega Windows mediante
+`windows-local.yml`, con prueba real del ejecutable y Python incluido.
+Fase 3 (analítica avanzada) y fase 4 (extras) pendientes. Las secciones siguientes
+son históricas y no certifican que toda la especificación V33 esté implementada.
 
 ## Entrega actual
 

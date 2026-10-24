@@ -6,6 +6,7 @@
   const productionReady = () => {try{return typeof S!=='undefined' && S.production && S.user;}catch(_){return false;}};
   function enhance(){
     if(!productionReady())return;
+    if(S.phase>=2)return window.LabPhaseTwo?.enhance();
     let nav=id('base-nav');if(!nav){nav=document.createElement('button');nav.id='base-nav';nav.dataset.view='base';nav.className='nav-item';nav.textContent='⚙ Instalación y respaldos';id('main-nav').append(nav);}
     const admin=S.user.role==='administrador';
     if(id('create-backup'))id('create-backup').classList.toggle('phase-hidden',!admin);
@@ -22,7 +23,8 @@
   function editUser(user=null){
     const roles=S.user.role==='administrador'?['tecnico','supervisor','administrador','visitante']:['tecnico'];
     const supervisors=S.users.filter(person=>person.role==='supervisor' && person.active);
-    openDialog(user?'Editar acceso':'Crear acceso',`<form id="base-user-form"><div class="form-grid two"><label>Nombre completo<input name="name" value="${escapeHtml(user?.name || '')}" required maxlength="90"></label><label>Puesto<input name="position" value="${escapeHtml(user?.position || '')}" required maxlength="150"></label>${user?'':`<label>Código de empleado / usuario<input name="username" required maxlength="35" autocomplete="off"></label><label>Perfil<select name="role">${roles.map(role=>`<option value="${role}">${escapeHtml(roleNames[role])}</option>`).join('')}</select></label>`}${S.user.role==='administrador'?`<label>Supervisor del técnico<select name="supervisor_id"><option value="">Sin asignar</option>${supervisors.map(person=>`<option value="${person.id}"${person.id===user?.supervisor_id?' selected':''}>${escapeHtml(person.name)}</option>`).join('')}</select></label>`:''}<label class="checkbox-label"><input name="active" type="checkbox"${user?.active===false?'':' checked'}> Acceso activo</label></div><p>La instalación genera una clave temporal nueva al crear el acceso. La asignación de actividades se habilitará en la fase 2.</p><div id="base-user-error" class="notice error hidden" role="alert"></div><button class="btn primary" type="submit">${user?'Guardar cambios':'Crear acceso'}</button></form>`,()=>{
+    openDialog(user?'Editar acceso':'Crear acceso',`<form id="base-user-form"><div class="form-grid two"><label>Nombre completo<input name="name" value="${escapeHtml(user?.name || '')}" required maxlength="90"></label><label>Puesto<input name="position" value="${escapeHtml(user?.position || '')}" required maxlength="150"></label>${user?'':`<label>Código de empleado / usuario<input name="username" required maxlength="35" autocomplete="off"></label><label>Perfil<select name="role">${roles.map(role=>`<option value="${role}">${escapeHtml(roleNames[role])}</option>`).join('')}</select></label>`}${(S.user.role==='administrador'||S.phase>=2)&&(!user||user.role==='tecnico')?`<label id="base-supervisor-field">Supervisor responsable<select name="supervisor_id"><option value="">Sin asignar</option>${supervisors.map(person=>`<option value="${person.id}"${person.id===user?.supervisor_id?' selected':''}>${escapeHtml(person.name)}</option>`).join('')}</select></label>`:''}<label class="checkbox-label"><input name="active" type="checkbox"${user?.active===false?'':' checked'}> Acceso activo</label></div><p>La instalación genera una clave temporal nueva al crear el acceso. La asignación de actividades se habilitará en la fase 2.</p><div id="base-user-error" class="notice error hidden" role="alert"></div><button class="btn primary" type="submit">${user?'Guardar cambios':'Crear acceso'}</button></form>`,()=>{
+      if(id('base-user-form').elements.role)id('base-user-form').elements.role.onchange=()=>id('base-supervisor-field')?.classList.toggle('hidden',id('base-user-form').elements.role.value!=='tecnico');
       id('base-user-form').onsubmit=event=>{event.preventDefault();busy(event.submitter,async()=>{
         const form=event.target,values=Object.fromEntries(new FormData(form));values.active=form.elements.active.checked;values.activity_ids=user?.activity_ids || [];
         const result=await api(user?`/api/usuarios/${user.id}/actualizar`:'/api/usuarios',values);
@@ -64,7 +66,7 @@
     const type={manual:'Creada por administrador',automatico:'Programada',antes_restauracion:'Antes de restaurar',sin_tipo:'Copia incorporada'};
     const download=file=>`<a class="btn secondary" href="/api/base/backup-file?name=${encodeURIComponent(file.name)}" download>Descargar${file.latest?' más reciente':''}</a>`;
     id('view-base').innerHTML=`
-      <section class="card"><h2>Base local · Fase 1</h2>${note('Instalación, usuarios, auditoría y respaldos. La captura de producción de la fase 2 permanece bloqueada.')}<p>La base de trabajo sigue en el disco local de la PC principal. Las carpetas de red guardan copias de seguridad.</p></section>
+      <section class="card"><h2>Base local · Fase ${S.phase||1}</h2>${note(S.phase>=2?'Fase 1 validada. La operación de fase 2 está disponible después de confirmar el catálogo.':'Instalación, usuarios, auditoría y respaldos. La captura de producción de la fase 2 permanece bloqueada.')}<p>La base de trabajo sigue en el disco local de la PC principal. Las carpetas de red guardan copias de seguridad.</p></section>
       <section class="card"><h2>Guardar copias en las unidades de la operativa</h2>
         <p>Puedes utilizar una o dos carpetas de las unidades de red disponibles. No necesitas USB. Por ejemplo: <strong>I:\\LaboratorioMedidas\\Respaldos</strong> y, si lo deseas, <strong>H:\\LaboratorioMedidas\\Respaldos</strong>. Son ejemplos: utiliza las rutas donde tu usuario de Windows tenga permiso para escribir.</p>
         <p>Las rutas se interpretan desde la PC principal, donde corre el programa. También se aceptan rutas de red completas, como <span class="mono">\\\\servidor\\carpeta\\LaboratorioMedidas\\Respaldos</span>.</p>
@@ -115,6 +117,6 @@
     const update=()=>{const light=document.documentElement.dataset.theme==='light';button.textContent=light?'☾':'☀';button.setAttribute('aria-label',light?'Activar modo oscuro':'Activar modo claro');button.title=light?'Modo oscuro':'Modo claro';};
     button.onclick=()=>{const value=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=value;try{localStorage.setItem('lab-theme',value);}catch(_){}update();try{Object.entries(S.charts).forEach(([key,chart])=>{if(id('view-'+S.view)?.contains(id('chart-'+key)))chart.redraw?.();});}catch(_){} };update();document.querySelector('.topbar-right')?.prepend(button);
   }
-  window.LabFoundation={enhance,loadStatus,editUser,resetUser,renderCards};
+  window.LabFoundation={profileForm,enhance,loadStatus,editUser,resetUser,renderCards};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',theme,{once:true});else theme();
 })();

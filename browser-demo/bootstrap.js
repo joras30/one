@@ -60,7 +60,7 @@ const banner=document.getElementById('demo-banner');
 new ResizeObserver(()=>document.documentElement.style.setProperty('--demo-banner-height',banner.offsetHeight+'px')).observe(banner);
 try{
   await rpc({type:'init',baseUrl});
-  for(const name of ['table-tools.js','profile-avatars.js','drilldown.js','foundation-ui.js','app.js'])await new Promise((resolve,reject)=>{
+  for(const name of ['table-tools.js','profile-avatars.js','drilldown.js','foundation-ui.js','phase2-ui.js','app.js'])await new Promise((resolve,reject)=>{
     const script=document.createElement('script');script.src=versionedUrl(name);script.onload=resolve;
     script.onerror=()=>reject(new Error('No se pudo cargar la interfaz. Recarga la página para volver a intentarlo.'));
     document.body.append(script);

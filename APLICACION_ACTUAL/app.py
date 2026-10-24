@@ -36,6 +36,7 @@ import documents
 import production
 import analytics
 import foundation
+import phase2
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / 'datos_locales'
@@ -54,7 +55,7 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_FAILURES = 6
 MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
-VERSION = '33.0.3-fase1'
+VERSION = '34.0-fase2'
 SCHEMA_VERSION = 4
 AVATAR_COLORS = {'azul': 'Azul', 'naranja': 'Naranja', 'verde': 'Verde', 'violeta': 'Violeta'}
 AVATAR_DEFAULTS = {'tecnico': 'azul', 'supervisor': 'naranja', 'administrador': 'violeta', 'visitante': 'verde'}
@@ -296,6 +297,7 @@ def init_db():
         db.executemany("INSERT OR IGNORE INTO catalog(kind,label) VALUES('condiciones',?)", [(v,) for v in additions])
         production.init_schema(db)
         foundation.init_schema(db)
+        phase2.init_schema(db)
         if not PRODUCTION_MODE and foundation.setting(db, 'environment') == 'production':
             raise ValueError('Esta base pertenece a producción. Iníciala con --production; no se abre como demo o instalación antigua.')
         if db.execute('PRAGMA user_version').fetchone()[0] < 3:
@@ -548,6 +550,8 @@ class Handler(BaseHTTPRequestHandler):
                   '/profile-avatars.css': ('static/profile-avatars.css', 'text/css; charset=utf-8'),
                   '/foundation-ui.js': ('static/foundation-ui.js', 'application/javascript; charset=utf-8'),
                   '/foundation-ui.css': ('static/foundation-ui.css', 'text/css; charset=utf-8'),
+                  '/phase2-ui.js': ('static/phase2-ui.js', 'application/javascript; charset=utf-8'),
+                  '/phase2.css': ('static/phase2.css', 'text/css; charset=utf-8'),
                   '/edesur.png': ('assets/edesur.png', 'image/png')}
         if path in static:
             filename, mime = static[path]
@@ -558,10 +562,13 @@ class Handler(BaseHTTPRequestHandler):
             user = self.current()
             with database() as db:
                 setup = db.execute('SELECT count(*) FROM users').fetchone()[0] == 0
+                phase = foundation.setting(db,'implemented_phase',1) if PRODUCTION_MODE else 0
+                installation_id=foundation.setting(db,'installation_id') if PRODUCTION_MODE else None
             result = {'logged': bool(user), 'setup_required': setup, 'demo': DEMO_MODE,
                       'public_demo': bool(PUBLIC_ORIGIN and DEMO_MODE), 'version': VERSION,
-                      'production_mode': PRODUCTION_MODE, 'delivered_phase': 1 if PRODUCTION_MODE else None,
-                      'validated_phase': 0 if PRODUCTION_MODE else None}
+                      'installation_id': installation_id,
+                      'production_mode': PRODUCTION_MODE, 'delivered_phase': phase if PRODUCTION_MODE else None,
+                      'validated_phase': 1 if PRODUCTION_MODE and phase>=2 else 0 if PRODUCTION_MODE else None}
             if user:
                 result.update(csrf=user['csrf'], user={k: user[k] for k in ('id', 'username', 'name', 'role', 'must_change', 'must_complete_profile', 'avatar_color', 'avatar_style')})
             return self.json(result)
@@ -569,6 +576,20 @@ class Handler(BaseHTTPRequestHandler):
         if not user:
             return
         with database() as db:
+            if path.startswith('/api/p2/'):
+                if not phase2.enabled(db):raise production.ApiError('La fase 2 no está habilitada.',423)
+                if path=='/api/p2/template.xlsx':
+                    body=phase2.template(db,user,query.get('activity_id','revision'))
+                    return self.send_bytes(body,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="plantilla-laboratorio.xlsx"'})
+                export=re.fullmatch(r'/api/p2/sap-summary\.(xlsx|pdf|csv)',path)
+                if export:
+                    report=phase2.sap_summary(db,user,query)
+                    headers=['Artículo SAP','Descripción de Materiales','Almacén','Clase de movimiento','Cantidad','Fecha de contabilización','Valoración']
+                    rows=[[row[k] for k in ('sap','description','warehouse','movement','quantity','booking_date','valuation')] for row in report['rows']]
+                    return self.table_download(headers,rows,report['title'],export[1],'sap')
+                result=phase2.handle_get(db,user,path,query)
+                if result is not None:return self.json(result)
+                raise production.ApiError('Consulta de fase 2 no encontrada.',404)
             if path == '/api/profile':
                 return self.json({'profile': foundation.profile(db, user['id'])})
             if path == '/api/base/backup-file':
@@ -582,14 +603,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_bytes(file.read_bytes(), 'application/octet-stream', headers={'Content-Disposition': f'attachment; filename="{name}"'})
             if path == '/api/base/status':
                 foundation.administrator(user)
-                return self.json({'phase': 1, 'environment': 'production' if PRODUCTION_MODE else 'pruebas',
+                return self.json({'phase': foundation.setting(db,'implemented_phase',1), 'environment': 'production' if PRODUCTION_MODE else 'pruebas',
                                   'backup': foundation.backup_status(sys.modules[__name__], user)})
             if path == '/api/avatar':
                 return self.json(avatar_preference(db, user['id'], user['role']))
             if path == '/api/usuarios':
                 if user['role'] == 'visitante':
                     raise production.ApiError('El perfil visitante solo consulta estadísticas agregadas.', 403)
-                if PRODUCTION_MODE and user['role'] == 'supervisor':
+                if PRODUCTION_MODE and user['role'] == 'supervisor' and not phase2.enabled(db):
                     rows = db.execute('SELECT * FROM users WHERE id=? OR id IN (SELECT user_id FROM user_supervisors WHERE supervisor_id=?) ORDER BY name,id', (user['id'], user['id']))
                 else:
                     rows = db.execute('SELECT * FROM users ORDER BY name,id') if user['role'] in MANAGERS else db.execute('SELECT * FROM users WHERE id=?', (user['id'],))
@@ -626,6 +647,13 @@ class Handler(BaseHTTPRequestHandler):
                     body, mime = documents.write_pdf(table['headers'], table['rows'], title=table['title']), 'application/pdf'
                 return self.send_bytes(body, mime, headers={'Content-Disposition': f'attachment; filename="produccion-{local_today().isoformat()}.{extension}"'})
             if path in ('/api/plantilla.csv', '/api/plantilla.xlsx'):
+                if phase2.enabled(db):
+                    activity=query.get('activity_id','revision');extension=path.rsplit('.',1)[1]
+                    if extension=='xlsx':body=phase2.template(db,user,activity)
+                    else:
+                        phase2.access(db,user,activity,'proponer_baja' if activity=='bajas' else 'carga_masiva')
+                        body=documents.write_csv([label for key,label in phase2.columns(db,activity)],[])
+                    return self.send_bytes(body,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if extension=='xlsx' else 'text/csv; charset=utf-8',headers={'Content-Disposition':f'attachment; filename="plantilla-{activity}.{extension}"'})
                 if user['role'] not in MANAGERS:
                     raise production.ApiError('Solo supervisión y administración pueden importar.', 403)
                 activity = query.get('activity_id', 'revision')
@@ -715,7 +743,12 @@ class Handler(BaseHTTPRequestHandler):
             if action:
                 return self.json(action(sys.modules[__name__], user, data))
             raise production.ApiError('Acción de administración no encontrada.', 404)
-        if PRODUCTION_MODE and path not in foundation.ALLOWED_PHASE_ONE_POSTS and not re.fullmatch(r'/api/usuarios/\d+/(actualizar|restablecer)', path):
+        with database() as db:
+            phase_two=phase2.enabled(db)
+        if path.startswith('/api/p2/'):
+            if not phase_two:raise production.ApiError('La fase 2 no está habilitada.',423)
+            with database() as db:return self.json(phase2.handle_post(db,user,path,data,sys.modules[__name__]))
+        if PRODUCTION_MODE and not phase_two and path not in foundation.ALLOWED_PHASE_ONE_POSTS and not re.fullmatch(r'/api/usuarios/\d+/(actualizar|restablecer)', path):
             raise production.ApiError('La fase operativa todavía no está validada. Esta entrega habilita instalación, usuarios, auditoría y respaldos.', 423)
         if path == '/api/avatar':
             if not isinstance(data, dict) or not {'color'} <= set(data) <= {'color','style'} or not isinstance(data.get('color'), str) or data['color'] not in AVATAR_COLORS:
@@ -777,6 +810,7 @@ class Handler(BaseHTTPRequestHandler):
                               'message': 'Copia verificada guardada en la carpeta backups de los datos de esta instalación.'})
         with database() as db:
             if path == '/api/catalogos':
+                if phase2.enabled(db):foundation.administrator(user)
                 if user['role'] not in MANAGERS:
                     raise production.ApiError('No tienes permiso para administrar catálogos.', 403)
                 kind, label = str(data.get('kind', '')), str(data.get('label', '')).strip()
@@ -791,6 +825,8 @@ class Handler(BaseHTTPRequestHandler):
                     db.execute('ROLLBACK')
                     raise
                 return self.json({'ok': True})
+            if phase2.enabled(db) and path.startswith('/api/import/'):
+                raise production.ApiError('Utiliza Carga masiva de la fase 2 para validar todos los conflictos.',403)
             if path == '/api/import/preview':
                 if user['role'] not in MANAGERS:
                     raise production.ApiError('La importación requiere supervisión.', 403)
@@ -835,7 +871,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not target:
                         raise production.ApiError('No se encontró el usuario.', 404)
                     role = effective_role(target)
-                    if PRODUCTION_MODE and actor['role'] == 'supervisor' and foundation.supervisor_id(db, uid) != actor['id']:
+                    if PRODUCTION_MODE and not phase2.enabled(db) and actor['role'] == 'supervisor' and foundation.supervisor_id(db, uid) != actor['id']:
                         raise production.ApiError('Solo puedes gestionar los accesos de tu equipo.', 403)
                     if actor['role'] != 'administrador' and role != 'tecnico':
                         raise production.ApiError('Solo administración puede gestionar perfiles privilegiados.', 403)
@@ -877,6 +913,7 @@ class Handler(BaseHTTPRequestHandler):
                             position = production._text(data['position'], 'Puesto', 150, True)
                             db.execute('INSERT INTO employee_profiles(user_id,position) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET position=excluded.position', (uid, position))
                         db.execute('UPDATE users SET name=?,active=? WHERE id=?', (name, int(active), uid))
+                        if PRODUCTION_MODE:db.execute('INSERT INTO employee_profiles(user_id,full_name) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET full_name=excluded.full_name',(uid,name))
                         if not active:
                             db.execute('DELETE FROM sessions WHERE user_id=?', (uid,))
                         if 'activity_ids' in data:
@@ -943,7 +980,7 @@ def main():
     parser.add_argument('--port', type=int, help='Puerto local; por defecto 8765 normal y 8766 demo')
     parser.add_argument('--lan-ip', help='IP privada fija de esta PC principal para compartir en la oficina; ejemplo 192.168.1.20')
     parser.add_argument('--no-browser', action='store_true')
-    parser.add_argument('--production', action='store_true', default=bool(getattr(sys, 'frozen', False)), help='Instalación local V33, fase 1, vacía y separada de pruebas')
+    parser.add_argument('--production', action='store_true', default=bool(getattr(sys, 'frozen', False)), help='Instalación local V34, fase 2, vacía y separada de pruebas')
     parser.add_argument('--reset-admin', action='store_true', help='Recuperación física de la cuenta maestra, con la aplicación cerrada')
     args = parser.parse_args()
     port = args.port if args.port is not None else (DEFAULT_DEMO_PORT if args.demo else DEFAULT_NORMAL_PORT)
@@ -986,6 +1023,7 @@ def serve(args):
         init_db()
         if PRODUCTION_MODE:
             password = foundation.bootstrap(sys.modules[__name__])
+            phase2.install(sys.modules[__name__])
             if password:
                 print('USUARIO MAESTRO: admin\nCLAVE TEMPORAL DE ADMIN (una sola visualización): ' + password, flush=True)
         if args.demo:
@@ -995,7 +1033,7 @@ def serve(args):
         server.server_close()
         raise
     url = f'http://{HOST}:{server.server_port}'
-    mode = 'PRODUCCIÓN LOCAL · V33 FASE 1 · OPERACIÓN PENDIENTE DE VALIDAR' if PRODUCTION_MODE else 'DEMOSTRACIÓN CON DATOS FICTICIOS' if args.demo else 'INSTALACIÓN NORMAL'
+    mode = 'PRODUCCIÓN LOCAL · V34 FASE 2 · CATÁLOGO Y OPERACIÓN' if PRODUCTION_MODE else 'DEMOSTRACIÓN CON DATOS FICTICIOS' if args.demo else 'INSTALACIÓN NORMAL'
     network = ('RED INTERNA: comparte esta dirección solo en la oficina. La PC principal debe permanecer encendida.'
                if LAN_IP else 'Prueba en este equipo; acceso por loopback.')
     print(f'Laboratorio de Medidas — Control de Producción {VERSION}\n{mode}\n{url}\n{network}\nCtrl+C para cerrar.', flush=True)

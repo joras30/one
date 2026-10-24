@@ -1,27 +1,27 @@
 # Laboratorio de Medidas — Control de Producción
 
-## Entrega vigente: V33, fase 1 para validación
+## Entrega vigente: V34, fase 2 para validación
 
-La producción local se prepara por fases, conforme a la especificación V33 del
-solicitante. **Esta entrega habilita instalación, usuarios, roles, perfil,
-auditoría, respaldo diario en una o dos carpetas de la operativa y restauración. La captura operativa permanece
-bloqueada hasta validar esta base y completar la fase 2.**
+La fase 1 fue validada. La entrega local habilita catálogo, actividades, captura,
+plantillas Excel, sellado con control permanente de sellos, bajas y piezas,
+asignaciones, recepciones parciales y resumen SAP. Conserva usuarios, auditoría,
+respaldos y restauración de la base anterior. No incluye personas ni datos reales.
 
-El paquete Windows x64 se construye y prueba en Windows y se entrega como versión
-de revisión en [Releases](https://github.com/joras30/one/releases). Incluye Python;
-extrae todo el ZIP y abre `INICIAR_PRODUCCION.bat`, sin instalar paquetes ni usar
-Internet para ejecutar. La guía está en [V33_FASES.md](deploy/V33_FASES.md).
+Descarga el paquete Windows x64 en [Releases](https://github.com/joras30/one/releases).
+Extrae todo el ZIP y abre `INICIAR_PRODUCCION.bat`; Python viene incluido.
+Al actualizar, conserva y copia **toda** tu carpeta `datos_produccion` junto al
+nuevo ejecutable. Importa y confirma el catálogo oficial localmente antes de
+capturar. Guía: [V34_FASE2.md](deploy/V34_FASE2.md).
 
-Desde las fuentes: `python APLICACION_ACTUAL/app.py --production`. La primera vez
-crea `admin` y muestra una clave temporal una sola vez en la consola. Debes
-cambiarla y completar el perfil. Los datos quedan en `datos_produccion`, separados
-de la demo. Para compartir en la oficina añade `--lan-ip` con la IP privada fija
-de la PC principal. Los respaldos se configuran en **Instalación y respaldos**.
+Desde fuentes: `python APLICACION_ACTUAL/app.py --production`. El primer inicio
+muestra la clave temporal de `admin` una vez. La base permanece en la PC principal;
+las carpetas de red se usan para respaldos. No se exige USB.
 
-La demostración gratuita conserva las funciones anteriores V6/2.2 descritas a
-continuación. Sirven para evaluar la interfaz; **no representan la operación V33
-completa**. El Excel de consolidación de 2026 se conserva como referencia privada;
-no se publica ni se precargan registros o personas reales en las pruebas.
+Todos los supervisores gestionan todos los técnicos; supervisor responsable es
+un dato informativo. Las fichas son interactivas y el técnico solo consulta la
+suya. Las fases 3 (análisis avanzado) y 4 (extras) están pendientes de validación
+e implementación. La demo pública conserva las funciones anteriores de evaluación;
+no representa la producción local completa.
 
 ## Demostración anterior y funciones conservadas
 

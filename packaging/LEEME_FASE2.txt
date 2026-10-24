@@ -1,0 +1,47 @@
+LABORATORIO DE MEDIDAS - CONTROL DE PRODUCCION
+V34 - FASE 2 PARA VALIDACION - WINDOWS X64
+
+1. Extrae TODO el ZIP antes de abrir INICIAR_PRODUCCION.bat.
+   Python viene incluido. No necesitas instalar paquetes ni pagar alojamiento.
+2. Si actualizas, detén el programa y conserva una copia de la carpeta anterior.
+   Copia datos_produccion COMPLETA a la nueva carpeta, junto al ejecutable.
+   No la reemplaces por una carpeta vacía. No borres tu instalación anterior
+   hasta comprobar usuarios, registros y respaldos. La actualización crea
+   un respaldo de seguridad antes de migrar los formularios.
+3. En una instalación nueva, la consola muestra una clave temporal de admin
+   una sola vez. Cámbiala y completa tu perfil. No hay usuarios precargados.
+4. En Catálogo maestro, importa tu Excel oficial: primero revisa la vista
+   previa de DATOS y después confirma. El personal no se importa en ese paso.
+   Si deseas importar PERSONAL, utiliza la sección independiente y guarda
+   las claves temporales mostradas una sola vez para entregar los accesos.
+5. Asigna actividades y permisos a los técnicos en Asignaciones.
+   Captura individual y carga masiva son permisos distintos.
+6. En Captura elige actividad y fecha. En Carga masiva descarga la plantilla
+   vigente, conserva series/códigos/sellos como TEXTO y revisa antes de confirmar.
+   Repetidos en actividad, fecha y condición exigen nota o quitar.
+   Un sello+color registrado nunca puede reutilizarse, ni tras una anulación.
+7. Configura Instalación y respaldos. Puedes usar una o dos carpetas de red
+   de la operativa con permiso de escritura; no es obligatorio conectar USB.
+   La base activa permanece en esta PC, nunca en una carpeta compartida.
+8. Para recuperar información, abre Instalación y respaldos, selecciona el
+   archivo .db de respaldo, revisa la vista previa y confirma la restauración
+   con tu contraseña y motivo. Reemplaza el estado actual: no mezcla bases.
+   No debes copiar el .db descargado manualmente sobre la base activa.
+9. Si se pierde la clave del administrador maestro, cierra la aplicación y
+   ejecuta RECUPERAR_ADMIN.bat en esta PC. La recuperación queda auditada.
+
+Los supervisores pueden gestionar todos los técnicos. Supervisor responsable
+es un dato de referencia, no un límite de permisos. Técnicos ven su propia ficha.
+
+INICIAR_PRUEBAS.bat usa datos separados; no los mezcles con producción.
+INICIAR_RED.bat requiere configurar la IP privada fija de la PC principal.
+La base SQLite debe permanecer en el disco local del servidor.
+
+Incluye: catálogo y actividades editables, captura rápida, plantillas Excel,
+vista previa, sellado, historial, bajas y piezas, asignaciones temporales,
+recepciones parciales, resumen SAP y fichas interactivas con datos generales.
+El resumen SAP genera archivos: no envía ni confirma movimientos dentro de SAP.
+Fases pendientes: 3, análisis avanzado/metas/jornadas/reportes; 4, extras
+(cierre diario, etiquetas, acta de conduce, scanner avanzado y monitor).
+
+No se incluyen datos, Excel oficiales, personas ni claves precargadas.
