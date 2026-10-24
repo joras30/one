@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='laboratorio-exe-ficticio-') as temp:
         assert request('/api/p2/article',{'code':'00010','valuation':'Nuevo','description':'Material ficticio'})[0]==200
         assert request('/api/p2/catalog/ready',{})[0]==200
         article=request('/api/p2/catalog')[1]['articles'][0]
-        event={'activity_id':'sellado','work_date':'2026-10-24','operation_id':'exe-ficticio-1','data':{'serie':'00001','marca':'Marca ficticia','sap_config_id':article['id'],'color':'AZUL','sello_1':'000S1','sello_2':'000S2'}}
+        event={'activity_id':'sellado','work_date':'2026-10-24','operation_id':'exe-ficticio-1','data':{'serie':'00001','marca':'Marca ficticia','sap':'00010','clasificacion':'Nuevo','sap_config_id':article['id'],'color':'AZUL','sello_1':'000S1','sello_2':'000S2'}}
         assert request('/api/eventos',event)[0]==200
         event['operation_id']='exe-ficticio-2';event['data']['serie']='00002'
         assert request('/api/eventos',event)[0]==409
