@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import threading
 import time
+from urllib.parse import quote
 
 import production as p
 
@@ -171,8 +172,8 @@ def volume_identity(path):
 
 
 def validate_targets(data_dir, targets):
-    if not isinstance(targets, list) or len(targets) != 2 or not all(isinstance(x, str) for x in targets):
-        raise p.ApiError('Configura dos destinos físicos externos a la carpeta de datos.')
+    if not isinstance(targets, list) or len(targets) not in (1, 2) or not all(isinstance(x, str) and x.strip() for x in targets):
+        raise p.ApiError('Configura una o dos carpetas de respaldo, por ejemplo en las unidades de red de la operativa.')
     roots = []
     for raw in targets:
         candidate = Path(raw.strip()).expanduser()
@@ -182,11 +183,8 @@ def validate_targets(data_dir, targets):
         if candidate == Path(candidate.anchor) or candidate == Path(data_dir).resolve() or candidate.is_relative_to(Path(data_dir).resolve()):
             raise p.ApiError('Usa una carpeta dedicada de respaldo fuera de la carpeta de datos.')
         roots.append(candidate)
-    if roots[0] == roots[1] or roots[0].is_relative_to(roots[1]) or roots[1].is_relative_to(roots[0]):
-        raise p.ApiError('Los dos destinos deben ser independientes.')
-    identities = [volume_identity(Path(data_dir)), *(volume_identity(x) for x in roots)]
-    if len(set(identities)) != 3:
-        raise p.ApiError('Los destinos deben estar en unidades distintas entre sí y distintas del disco de la base. Dos carpetas del mismo disco no son dos respaldos físicos.')
+    if len(roots) == 2 and (roots[0] == roots[1] or roots[0].is_relative_to(roots[1]) or roots[1].is_relative_to(roots[0])):
+        raise p.ApiError('Elige carpetas diferentes, sin colocar una dentro de la otra.')
     return roots
 
 
@@ -195,21 +193,24 @@ def save_backup_settings(app, user, data):
     hour = str(data.get('daily_time', ''))
     if not re.fullmatch(r'(?:[01][0-9]|2[0-3]):[0-5][0-9]', hour):
         raise p.ApiError('Elige una hora diaria entre 00:00 y 23:59.')
-    if data.get('confirmed_distinct_media') is not True:
-        raise p.ApiError('Confirma que los destinos corresponden a dos ubicaciones físicas distintas.')
     roots = validate_targets(app.DATA_DIR, data.get('targets'))
     for target in roots:
-        target.mkdir(parents=True, exist_ok=True)
         probe = target / ('.prueba-' + secrets.token_hex(8))
         try:
+            target.mkdir(parents=True, exist_ok=True)
             with probe.open('xb') as stream:
                 stream.write(b'Laboratorio respaldo');stream.flush();os.fsync(stream.fileno())
+        except OSError as error:
+            raise p.ApiError(f'No se pudo escribir en {target}. Comprueba que la unidad esté conectada y que tu usuario de Windows tenga permiso para crear archivos. Detalle: {error}') from error
         finally:
-            probe.unlink(missing_ok=True)
-    clean = {'daily_time': hour, 'targets': [str(x) for x in roots], 'confirmed_distinct_media': True}
+            try:
+                probe.unlink(missing_ok=True)
+            except OSError:
+                pass
+    clean = {'daily_time': hour, 'targets': [str(x) for x in roots], 'policy': 'carpetas_operativas'}
     with app.database() as db, p._transaction(db):
         put_setting(db, 'backup', clean)
-        p.audit(db, user, 'backup', 'configuracion', 'configurar_dual', after=clean)
+        p.audit(db, user, 'backup', 'configuracion', 'configurar_carpetas', after=clean)
     return {'ok': True, 'settings': clean}
 
 
@@ -248,19 +249,18 @@ def run_backup(app, actor=None, source='manual'):
         copies = []
         for raw in cfg['targets']:
             try:
-                # Detectar también un disco retirado cuyo montaje ahora apunte
-                # al disco principal: nunca dar esa copia por externa correcta.
-                roots = validate_targets(app.DATA_DIR, cfg['targets'])
-                target = next(root for root in roots if str(root) == raw) / primary.name
+                # Cada carpeta se copia y verifica por separado, incluso cuando
+                # pertenece al mismo servidor que otra carpeta configurada.
+                target = validate_targets(app.DATA_DIR, [raw])[0] / primary.name
                 checked_copy(primary, target, digest)
                 copies.append({'path': str(target), 'ok': True})
             except Exception as error:
                 copies.append({'path': raw, 'ok': False, 'error': str(error)})
-        status = 'correcto' if len(copies) == 2 and all(x['ok'] for x in copies) else 'incompleto'
+        status = 'correcto' if copies and all(x['ok'] for x in copies) else 'incompleto'
         with app.database() as db, p._transaction(db):
             cursor = db.execute('''INSERT INTO backup_runs(started_at,finished_at,source,primary_path,digest,status,copies_json)
                 VALUES(?,?,?,?,?,?,?)''', (started, app.utcnow(), source, str(primary), digest, status, json.dumps(copies)))
-            p.audit(db, actor, 'backup', cursor.lastrowid, 'crear_dual', after={'status': status, 'copies': copies, 'sha256': digest})
+            p.audit(db, actor, 'backup', cursor.lastrowid, 'crear_respaldo', after={'status': status, 'copies': copies, 'sha256': digest})
         return {'ok': status == 'correcto', 'status': status, 'primary': str(primary), 'sha256': digest, 'copies': copies}
 
 
@@ -268,12 +268,30 @@ def backup_status(app, user):
     administrator(user)
     with app.database() as db:
         rows = db.execute('SELECT * FROM backup_runs ORDER BY id DESC LIMIT 30').fetchall()
+        known = {row['primary_path']: row for row in db.execute('SELECT primary_path,started_at,source FROM backup_runs')}
+        files = []
+        for file in (app.DATA_DIR / 'backups').glob('*.db'):
+            if file.is_symlink():
+                continue
+            run = known.get(str(file))
+            created = datetime.fromisoformat(run['started_at'].replace('Z', '+00:00')) if run else datetime.fromtimestamp(file.stat().st_mtime, timezone.utc)
+            files.append({'name': file.name, 'path': str(file), 'bytes': file.stat().st_size,
+                          'created_at': created.isoformat(), 'source': run['source'] if run else 'sin_tipo',
+                          '_timestamp': created.timestamp()})
+        files.sort(key=lambda item: (item['_timestamp'], item['name']), reverse=True)
+        for index, file in enumerate(files):
+            file.pop('_timestamp');file['latest'] = index == 0
         return {'settings': backup_settings(db), 'local_directory': str(app.DATA_DIR / 'backups'),
                 'runs': [{**dict(row), 'copies': json.loads(row['copies_json'])} for row in rows],
-                'files': [{'name': file.name, 'path': str(file), 'bytes': file.stat().st_size}
-                          for file in sorted((app.DATA_DIR / 'backups').glob('*.db'), reverse=True)[:50]],
+                'files': files[:50],
                 'timezone': 'America/Santo_Domingo (UTC−04:00)',
-                'note': 'La PC debe estar encendida y los destinos conectados. Un fallo se muestra como incompleto; no se declara éxito de dos copias si falta alguna.'}
+                'note': 'Correcto significa que se verificaron las carpetas configuradas. No certifica que estén en discos físicos distintos. La PC y la aplicación deben estar encendidas y los destinos accesibles.'}
+
+
+def readonly_uri(path):
+    value = path.as_posix()
+    # Empty URI authority keeps Windows UNC paths as a filesystem path.
+    return 'file:' + ('//' if value.startswith('//') else '') + quote(value, safe='/:') + '?mode=ro'
 
 
 def restore_preview(app, user, data):
@@ -282,11 +300,11 @@ def restore_preview(app, user, data):
     with app.database() as db:
         roots = [app.DATA_DIR / 'backups', *(Path(x) for x in backup_settings(db)['targets'])]
     if not any(source.is_relative_to(root.resolve()) for root in roots) or source.suffix.lower() != '.db' or not source.is_file():
-        raise p.ApiError('Elige un archivo .db de la carpeta local de respaldos o de los dos destinos configurados.')
+        raise p.ApiError('Elige un archivo .db de la carpeta local de respaldos o de una carpeta de respaldo configurada.')
     with source.open('rb') as stream:
         if stream.read(16) != b'SQLite format 3\x00':
             raise p.ApiError('El archivo no es un respaldo SQLite válido.')
-    with closing(sqlite3.connect(f'file:{source.as_posix()}?mode=ro', uri=True)) as saved:
+    with closing(sqlite3.connect(readonly_uri(source), uri=True)) as saved:
         if saved.execute('PRAGMA integrity_check').fetchone()[0] != 'ok' or saved.execute('PRAGMA foreign_key_check').fetchone():
             raise p.ApiError('El respaldo no pasó la verificación de integridad.')
         tables = {x[0] for x in saved.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -359,7 +377,7 @@ class BackupScheduler:
         with self.app.database() as db:
             cfg = backup_settings(db)
             last = db.execute("SELECT started_at FROM backup_runs WHERE status='correcto' AND source='automatico' ORDER BY id DESC LIMIT 1").fetchone()
-        if len(cfg['targets']) != 2:
+        if len(cfg['targets']) not in (1, 2):
             return None
         hour, minute = map(int, cfg['daily_time'].split(':'))
         due = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
