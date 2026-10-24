@@ -12,3 +12,16 @@
 [data-theme="light"] .notice.soft,[data-theme="light"] .lab-table-tools,[data-theme="light"] .lab-table-footer,[data-theme="light"] .temporary-key{background:#eaf2fb;color:#17304d;border-color:#b9cde3}
 [data-theme="light"] .notice.error{background:#fff0f0;color:#982a3b}[data-theme="light"] .notice.success{background:#e8f7ef;color:#16613c}[data-theme="light"] .notice.warning{background:#fff5df;color:#76500c}
 @media(max-width:480px){.temporary-key{font-size:18px}#view-base .card>p{font-size:12px}.theme-toggle{width:30px;min-width:30px}}
+/* Contraste consistente en los formularios y fichas de la base local. */
+[data-theme="light"]{--ink:#17304d;--muted:#49617b;--navy:#17304d;--navy-light:#225d91;--orange-dark:#99500e;--green:#17613e;--red:#9a2438;--amber:#76500c}
+[data-theme="light"] .card-heading p,[data-theme="light"] .account-text small,[data-theme="light"] .lab-avatar-preview p,[data-theme="light"] .lab-avatar-persistence,[data-theme="light"] .lab-avatar-status,[data-theme="light"] .person-profile-note{color:#49617b}
+[data-theme="light"] .lab-avatar-preview-role,[data-theme="light"] .lab-avatar-form legend,[data-theme="light"] .text-button,[data-theme="light"] .card-heading h2{color:#17304d}
+[data-theme="light"] .lab-avatar-palette-option{background:#edf3fa;color:#17304d;border-color:#a9bed4}
+[data-theme="light"] .lab-avatar-palette-option.is-selected{background:#d8eaf9;border-color:#22608d;box-shadow:inset 0 0 0 1px #22608d}
+[data-theme="light"] a{color:#195c94}[data-theme="light"] input::placeholder{color:#596d81;opacity:1}
+[data-theme="light"] .lab-avatar-status.is-success{color:#17613e}[data-theme="light"] .lab-avatar-status.is-error{color:#9a2438}
+.person-cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px;margin:18px 0 26px}.person-profile-card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);margin-bottom:20px}.person-profile-banner{display:flex;align-items:center;gap:18px;padding:22px;background:#173552;color:#fff;border-top:4px solid #f69a3d}.person-profile-banner h3{color:#fff!important;font-size:20px;line-height:1.4;margin:5px 0}.person-profile-banner small{color:#d8e9f7!important}.person-profile-banner p{color:#d8e9f7!important;margin:5px 0!important}.person-profile-card dl{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:18px;font-size:13px}.person-profile-card dd{margin:0;font-weight:650}.person-profile-note{padding:0 18px 18px;font-size:12px!important;color:var(--muted);line-height:1.7}.lab-avatar-form>label{margin-bottom:18px}
+
+[data-theme="light"] .lab-table-tools p,[data-theme="light"] .lab-table-tools small,[data-theme="light"] .lab-table-footer,[data-theme="light"] .person-cell small,[data-theme="light"] .eyebrow{color:#49617b}
+[data-theme="light"] #profile-details dt{color:#49617b}[data-theme="light"] #profile-details dd{color:#17304d}
+[data-theme="light"] .lab-table-scope,[data-theme="light"] .lab-table-search-note{color:#49617b}
