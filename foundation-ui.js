@@ -32,8 +32,9 @@
     });
   }
   function resetUser(person){
-    openDialog('Restablecer acceso del técnico',`<p>Se creará una clave temporal nueva para <strong>${escapeHtml(person.name)}</strong>, se cerrarán sus sesiones y conservará su historial.</p><p>Después deberá cambiar esa clave.</p><div id="base-reset-error" class="notice error hidden" role="alert"></div><button id="base-reset-confirm" class="btn primary" type="button">Generar nueva clave temporal</button>`,()=>{
-      id('base-reset-confirm').onclick=()=>busy(id('base-reset-confirm'),async()=>{const result=await api(`/api/usuarios/${person.id}/restablecer`,{});closeDialog();temporary(person.username,result.temporary_password);},id('base-reset-error'));
+    const privileged=person.role!=='tecnico';
+    openDialog('Restablecer acceso',`<p>Se creará una clave temporal nueva para <strong>${escapeHtml(person.name)}</strong>, se cerrarán sus sesiones y conservará su historial.</p><p>Después deberá cambiar esa clave.</p>${privileged?'<label>Motivo del restablecimiento<input id="base-reset-reason" required maxlength="1500" autocomplete="off"></label><label>Tu contraseña de administrador<input id="base-reset-password" type="password" required autocomplete="current-password"></label>':''}<div id="base-reset-error" class="notice error hidden" role="alert"></div><button id="base-reset-confirm" class="btn primary" type="button">Generar nueva clave temporal</button>`,()=>{
+      id('base-reset-confirm').onclick=()=>busy(id('base-reset-confirm'),async()=>{const data=privileged?{reason:id('base-reset-reason').value,password:id('base-reset-password').value}:{};const result=await api(`/api/usuarios/${person.id}/restablecer`,data);closeDialog();temporary(person.username,result.temporary_password);},id('base-reset-error'));
     });
   }
   function personCard(person){
@@ -42,7 +43,7 @@
   function renderCards(users){
     if(!productionReady())return;
     let section=id('collaborator-cards');if(!section){section=document.createElement('section');section.id='collaborator-cards';id('users-table').before(section);}
-    section.innerHTML=`<h2>Fichas de colaboradores</h2><div class="person-cards-grid">${users.map(person=>personCard(person)).join('')}</div>`;
+    section.innerHTML=`<details class="screen-help"><summary>¿Quién puede recuperar cada acceso?</summary><p>Supervisores: un administrador puede generarles una clave temporal. Administradores adicionales: otro administrador puede restablecerlos, confirmando su contraseña y el motivo. Los técnicos del equipo pueden ser restablecidos por su supervisor o por administración.</p><p>Cuenta maestra, o si ningún administrador recuerda su clave: en la PC principal, detén el servidor con Ctrl+C y ejecuta RECUPERAR_ADMIN.bat. Confirma y escribe el motivo; se mostrará una clave temporal para la cuenta maestra. Inicia de nuevo el programa y cambia esa clave al entrar. Se conservan los datos y queda constancia en la auditoría.</p></details><h2>Fichas de colaboradores</h2><div class="person-cards-grid">${users.map(person=>personCard(person)).join('')}</div>`;
   }
   async function profileForm(){
     const owner=String(S.user.id);
@@ -112,7 +113,7 @@
     document.documentElement.dataset.theme=chosen==='light'?'light':'dark';
     const button=document.createElement('button');button.type='button';button.className='icon-button theme-toggle';button.id='theme-toggle';
     const update=()=>{const light=document.documentElement.dataset.theme==='light';button.textContent=light?'☾':'☀';button.setAttribute('aria-label',light?'Activar modo oscuro':'Activar modo claro');button.title=light?'Modo oscuro':'Modo claro';};
-    button.onclick=()=>{const value=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=value;try{localStorage.setItem('lab-theme',value);}catch(_){}update();};update();document.querySelector('.topbar-right')?.prepend(button);
+    button.onclick=()=>{const value=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=value;try{localStorage.setItem('lab-theme',value);}catch(_){}update();try{Object.entries(S.charts).forEach(([key,chart])=>{if(id('view-'+S.view)?.contains(id('chart-'+key)))chart.redraw?.();});}catch(_){} };update();document.querySelector('.topbar-right')?.prepend(button);
   }
   window.LabFoundation={enhance,loadStatus,editUser,resetUser,renderCards};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',theme,{once:true});else theme();
