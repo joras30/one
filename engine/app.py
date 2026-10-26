@@ -36,6 +36,7 @@ import documents
 import production
 import analytics
 import foundation
+import labflows
 import phase2
 
 ROOT = Path(__file__).resolve().parent
@@ -55,7 +56,7 @@ LOGIN_WINDOW_SECONDS = 15 * 60
 LOGIN_MAX_FAILURES = 6
 MANAGERS = {'supervisor', 'administrador'}
 ROLES = {'tecnico', 'supervisor', 'administrador', 'visitante'}
-VERSION = '34.0-fase2'
+VERSION = '34.1-fase2'
 SCHEMA_VERSION = 4
 AVATAR_COLORS = {'azul': 'Azul', 'naranja': 'Naranja', 'verde': 'Verde', 'violeta': 'Violeta'}
 AVATAR_DEFAULTS = {'tecnico': 'azul', 'supervisor': 'naranja', 'administrador': 'violeta', 'visitante': 'verde'}
@@ -550,6 +551,7 @@ class Handler(BaseHTTPRequestHandler):
                   '/profile-avatars.css': ('static/profile-avatars.css', 'text/css; charset=utf-8'),
                   '/foundation-ui.js': ('static/foundation-ui.js', 'application/javascript; charset=utf-8'),
                   '/foundation-ui.css': ('static/foundation-ui.css', 'text/css; charset=utf-8'),
+                  '/labflows-ui.js': ('static/labflows-ui.js', 'application/javascript; charset=utf-8'),
                   '/phase2-ui.js': ('static/phase2-ui.js', 'application/javascript; charset=utf-8'),
                   '/phase2.css': ('static/phase2.css', 'text/css; charset=utf-8'),
                   '/edesur.png': ('assets/edesur.png', 'image/png')}
@@ -564,9 +566,10 @@ class Handler(BaseHTTPRequestHandler):
                 setup = db.execute('SELECT count(*) FROM users').fetchone()[0] == 0
                 phase = foundation.setting(db,'implemented_phase',1) if PRODUCTION_MODE else 0
                 installation_id=foundation.setting(db,'installation_id') if PRODUCTION_MODE else None
+                lab_revision=labflows.enabled(db) if PRODUCTION_MODE else False
             result = {'logged': bool(user), 'setup_required': setup, 'demo': DEMO_MODE,
                       'public_demo': bool(PUBLIC_ORIGIN and DEMO_MODE), 'version': VERSION,
-                      'installation_id': installation_id,
+                      'installation_id': installation_id,'lab_revision': lab_revision,
                       'production_mode': PRODUCTION_MODE, 'delivered_phase': phase if PRODUCTION_MODE else None,
                       'validated_phase': 1 if PRODUCTION_MODE and phase>=2 else 0 if PRODUCTION_MODE else None}
             if user:
@@ -581,6 +584,10 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/p2/template.xlsx':
                     body=phase2.template(db,user,query.get('activity_id','revision'))
                     return self.send_bytes(body,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="plantilla-laboratorio.xlsx"'})
+                report_export=re.fullmatch(r'/api/p2/analysis\.(xlsx|pdf|csv)',path)
+                if report_export:
+                    result=labflows.analysis(db,user,query);headers,rows,title=labflows.report(result,query.get('report','ranking'))
+                    return self.table_download(headers,rows,title,report_export[1],'laboratorio')
                 export=re.fullmatch(r'/api/p2/sap-summary\.(xlsx|pdf|csv)',path)
                 if export:
                     report=phase2.sap_summary(db,user,query)
@@ -1024,6 +1031,7 @@ def serve(args):
         if PRODUCTION_MODE:
             password = foundation.bootstrap(sys.modules[__name__])
             phase2.install(sys.modules[__name__])
+            labflows.install(sys.modules[__name__])
             if password:
                 print('USUARIO MAESTRO: admin\nCLAVE TEMPORAL DE ADMIN (una sola visualización): ' + password, flush=True)
         if args.demo:

@@ -164,6 +164,8 @@ def prepare_sap(db,activity,raw,existing):
 
 
 def before_event(db,user,payload,normalized,existing=None,bulk=False):
+    import labflows
+    if labflows.enabled(db):labflows.guard(db,user,payload,normalized,bulk,existing)
     if normalized['activity_id']=='bajas':raise p.ApiError('Las bajas se registran desde el flujo de Baja definitiva.',403)
     access(db,user,normalized['activity_id'],'carga_masiva' if bulk else 'capturar')
     if not f.setting(db,'catalog_ready',False):raise p.ApiError('Administración debe cargar o confirmar el catálogo operativo antes de capturar.',409)
@@ -251,6 +253,8 @@ def save_assignment(db,user,data):
     person=db.execute("SELECT * FROM users WHERE id=? AND active=1 AND COALESCE(access_role,role)='tecnico'",(uid,)).fetchone()
     if not person:raise p.ApiError('Selecciona un técnico activo.')
     activity=p._activity(db,p._text(data.get('activity_id'),'Actividad',80,True))
+    import labflows
+    if labflows.enabled(db) and activity['id'] in {'bajas','asignacion'}:raise p.ApiError('Actividad retirada de la operativa.',403)
     start=parse_instant(data.get('starts_at',p.now()));end=parse_instant(data['ends_at']) if data.get('ends_at') else None
     if end and end<=start:raise p.ApiError('El vencimiento debe ser posterior al inicio.')
     permissions=data.get('permissions',[])
@@ -273,6 +277,8 @@ def parse_instant(value):
 
 
 def save_scrap(db,user,data):
+    import labflows
+    if labflows.enabled(db):raise p.ApiError('Bajas y piezas está deshabilitado por decisión del solicitante.',403)
     a=access(db,user,'bajas','proponer_baja')
     serial=p._text(data.get('serial'),'Serie',60,True)
     if not isinstance(data.get('serial'),str):raise p.ApiError('La serie debe ser texto.')
@@ -304,6 +310,8 @@ def save_scrap(db,user,data):
 
 
 def resolve_scrap(db,user,data):
+    import labflows
+    if labflows.enabled(db):raise p.ApiError('Bajas y piezas está deshabilitado.',403)
     p._manager(user);ids=data.get('ids',[]);action=data.get('action')
     if not isinstance(ids,list) or not ids or len(ids)>5000 or len(set(map(str,ids)))!=len(ids):raise p.ApiError('Selecciona bajas diferentes.')
     if action not in {'autorizar','rechazar','revertir'}:raise p.ApiError('Acción de baja inválida.')
@@ -391,6 +399,9 @@ def catalog_confirm(db,user,data):
         for label in values[kind]:db.execute('INSERT INTO catalog(kind,label,active) VALUES(?,?,1) ON CONFLICT(kind,label) DO UPDATE SET active=1',(kind,label))
     db.execute('UPDATE p2_articles SET active=0');db.execute('UPDATE sap_configurations SET active=0')
     for article in values['articles']:save_article(db,user,article)
+    import labflows
+    if labflows.enabled(db):
+        for label in ['Bueno','Condiciones óptimas','Dentro de lo establecido']:db.execute("INSERT INTO catalog(kind,label,active) VALUES('condiciones',?,1) ON CONFLICT(kind,label) DO UPDATE SET active=1",(label,))
     f.put_setting(db,'catalog_ready',True)
     db.execute("UPDATE p2_jobs SET status='confirmado' WHERE id=?",(row['id'],))
     p.audit(db,user,'catalogo','oficial','importar',after={key:len(value) for key,value in values.items()})
@@ -398,6 +409,8 @@ def catalog_confirm(db,user,data):
 
 
 def columns(db,activity_id):
+    import labflows
+    if labflows.enabled(db) and activity_id in labflows.OFFICIAL:return labflows.OFFICIAL[activity_id]
     if activity_id=='bajas':return [('serie','SERIE'),('work_date','FECHA'),('motivo','MOTIVO'),('piezas','PIEZAS APROVECHADAS'),('observaciones','OBSERVACIONES')]
     a=p._activity(db,activity_id)
     cols=[('work_date','FECHA'),('responsible','NUMERO DE EMPLEADO')]
@@ -447,7 +460,9 @@ def template(db,user,activity_id):
             if name=='[Content_Types].xml':value=value.replace('</Types>','<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')
             target.writestr(name,value.encode())
         target.writestr('xl/worksheets/sheet2.xml',reference.read('xl/worksheets/sheet1.xml'))
-    return out.getvalue()
+    raw=out.getvalue()
+    import labflows
+    return labflows.decorate_template(raw,activity_id) if labflows.enabled(db) and activity_id in labflows.OFFICIAL else raw
 
 
 def row_payload(db,user,activity_id,row):
@@ -455,11 +470,17 @@ def row_payload(db,user,activity_id,row):
     aliases={'numero_de_empleado':'responsible','sello_1':'sello_1','sello_2':'sello_2','articulo_sap':'sap','valoracion':'clasificacion','justificacion_repetido':'duplicate_note','motivo_registro_delegado':'delegation_reason','piezas_aprovechadas':'piezas'}
     for original,target in aliases.items():
         if original in normalized:normalized[target]=normalized[original]
+    import labflows
+    if labflows.enabled(db):normalized=labflows.adapt_row(db,user,activity_id,normalized)
     person=user['id']
     if normalized.get('responsible'):
-        code=p._text(normalized['responsible'],'Código de empleado',60,True)
+        code=p._text(normalized['responsible'],'Código o nombre completo del empleado',150 if labflows.enabled(db) else 60,True)
         target=db.execute('SELECT id FROM users WHERE username=? AND active=1',(code,)).fetchone()
-        if not target:raise p.ApiError('Código de empleado no encontrado.')
+        if not target and labflows.enabled(db):
+            matches=[row for row in db.execute('SELECT id,name FROM users WHERE active=1') if p._fold(row['name'])==p._fold(code)]
+            if len(matches)==1:target=matches[0]
+            elif len(matches)>1:raise p.ApiError('El nombre coincide con varias personas. Usa el código de empleado para evitar una atribución equivocada.')
+        if not target:raise p.ApiError('Empleado no encontrado. Usa su código o su nombre completo exacto.')
         person=target['id']
         if user['role']=='tecnico' and person!=user['id']:raise p.ApiError('El técnico solo registra su propia producción.',403)
     if activity_id=='bajas':
@@ -509,8 +530,23 @@ def preview_rows(db,user,activity_id,rows):
 def import_preview(db,user,data):
     activity=p._text(data.get('activity_id'),'Actividad',80,True)
     if 'rows' in data:rows=data['rows']
-    else:rows=d.read_table(p._text(data.get('filename'),'Archivo',200,True),file_bytes(data),strict_text_ids=True)
-    return preview_rows(db,user,activity,rows)
+    else:
+        import labflows
+        rows=labflows.read_official(db,user,activity,data) if labflows.enabled(db) and activity in labflows.OFFICIAL else d.read_table(p._text(data.get('filename'),'Archivo',200,True),file_bytes(data),strict_text_ids=True)
+    result=preview_rows(db,user,activity,rows)
+    import labflows
+    if labflows.enabled(db) and 'rows' not in data:
+        source=hashlib.sha256(file_bytes(data)).hexdigest()
+        previous=db.execute('SELECT job_id FROM lab_import_files WHERE activity_id=? AND sha256=?',(activity,source)).fetchone()
+        if previous:raise p.ApiError('Este archivo ya fue importado. Consulta sus registros antes de volver a cargarlo.',409)
+        token=job(db,user,result['preview_id'],'rows');saved=json.loads(token['payload_json']);saved['source_sha256']=source
+        db.execute('UPDATE p2_jobs SET payload_json=? WHERE id=?',(p._json(saved),result['preview_id']))
+    if 'rows' in data and data.get('previous_preview_id'):
+        previous=job(db,user,data['previous_preview_id'],'rows');original=json.loads(previous['payload_json'])
+        if original.get('source_sha256') and original['activity_id']==activity:
+            current=job(db,user,result['preview_id'],'rows');payload=json.loads(current['payload_json']);payload['source_sha256']=original['source_sha256']
+            db.execute('UPDATE p2_jobs SET payload_json=? WHERE id=?',(p._json(payload),result['preview_id']))
+    return result
 
 
 def import_confirm(db,user,data):
@@ -519,6 +555,10 @@ def import_confirm(db,user,data):
     payload=json.loads(row['payload_json'])
     if not payload['valid']:raise p.ApiError('Corrige o quita las filas con errores y vuelve a validar antes de guardar.',409)
     access(db,user,payload['activity_id'],'proponer_baja' if payload['activity_id']=='bajas' else 'carga_masiva')
+    if payload.get('source_sha256'):
+        previous=db.execute('SELECT job_id FROM lab_import_files WHERE activity_id=? AND sha256=?',(payload['activity_id'],payload['source_sha256'])).fetchone()
+        if previous:raise p.ApiError('Este archivo ya fue importado desde otra vista previa. No se duplicó ningún registro.',409)
+        db.execute('INSERT INTO lab_import_files VALUES(?,?,?)',(payload['activity_id'],payload['source_sha256'],row['id']))
     count=0;removed=0
     for index,raw in enumerate(payload['rows'],2):
         if raw.get('_drop'):
@@ -555,6 +595,10 @@ def sap_summary(db,user,query):
 
 
 def handle_get(db,user,path,query):
+    if path=='/api/p2/analysis':
+        import labflows
+        if not labflows.enabled(db):raise p.ApiError('Actualiza la instalación.',423)
+        return labflows.analysis(db,user,query)
     if path=='/api/p2/catalog':return catalog(db)
     if path=='/api/p2/personal':return personnel(db,user)
     match=re.fullmatch(r'/api/p2/personal/(\d+)',path)

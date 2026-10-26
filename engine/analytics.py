@@ -153,7 +153,7 @@ def _average(values, absolute=False):
 
 def _quality_summary(events):
     outcomes = Counter(production._fold(event["data"].get("resultado", "")) for event in events)
-    approved, rejected = outcomes["apto"], outcomes["no apto"]
+    approved, rejected = outcomes["apto"]+outcomes["reutilizable"], outcomes["no apto"]+outcomes["no reutilizable"]
     pending = outcomes["pendiente"]
     evaluated = approved + rejected
     calibrations = [value for event in events if (value := _calibration(event["data"])) is not None]

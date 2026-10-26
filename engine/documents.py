@@ -53,6 +53,7 @@ def _plain(value) -> str:
 
 def normalize_header(value: str) -> str:
     """Convierte nombres humanos y canónicos a las claves de importación."""
+    if _plain(value).strip()=="#":return "numero"
     text = unicodedata.normalize("NFKD", _plain(value).strip().lower())
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
@@ -70,7 +71,7 @@ def normalize_header(value: str) -> str:
         "numero_serie": "serie", "numero_de_serie": "serie",
         "codigo_medidor": "serie", "codigo_de_medidor": "serie",
         "medidor": "serie", "meter": "serie", "serial": "serie",
-        "codigo_sap": "sap", "cod_sap": "sap", "material_sap": "sap",
+        "articulo": "sap", "artuculos_sap": "sap", "articulos_sap": "sap", "codigo_sap": "sap", "cod_sap": "sap", "material_sap": "sap",
         "marca_modelo": "marca", "marca_y_modelo": "marca",
         "brand": "marca", "brand_model": "marca", "model": "modelo",
         "tension": "voltaje", "nivel_tension": "voltaje",
