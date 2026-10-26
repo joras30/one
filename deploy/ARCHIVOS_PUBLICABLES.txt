@@ -79,3 +79,8 @@ APLICACION_ACTUAL/tests/test_phase2_http.py
 tests/test_phase2_domain.py
 packaging/LEEME_FASE2.txt
 deploy/V34_FASE2.md
+
+APLICACION_ACTUAL/labflows.py
+APLICACION_ACTUAL/static/labflows-ui.js
+tests/test_labflows.py
+deploy/V34_1_ACTIVIDADES.md

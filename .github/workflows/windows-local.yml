@@ -1,4 +1,4 @@
-name: Entregar Windows local V34 fase 2
+name: Entregar Windows local V34.1 actividades
 on:
   push:
     branches: [demo-web]
@@ -25,24 +25,24 @@ jobs:
         with:
           name: laboratorio-windows-fase2
           path: |
-            dist/LABORATORIO_V34_FASE2_WINDOWS.zip
-            dist/LABORATORIO_V34_FASE2_WINDOWS.sha256.txt
+            dist/LABORATORIO_V34_1_FASE2_WINDOWS.zip
+            dist/LABORATORIO_V34_1_FASE2_WINDOWS.sha256.txt
           retention-days: 7
       - name: Publicar paquete de revisión de fase 2
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const tag = 'v34-fase2-' + context.sha.slice(0,7);
+            const tag = 'v34-1-fase2-' + context.sha.slice(0,7);
             let release;
             try { release = (await github.rest.repos.getReleaseByTag({...context.repo,tag})).data; }
             catch (error) {
               if (error.status !== 404) throw error;
               release = (await github.rest.repos.createRelease({...context.repo,tag_name:tag,target_commitish:context.sha,
-                name:'V34 · Fase 2 local para validación',prerelease:true,
-                body:'Windows x64 local: base validada más catálogo, actividades, plantillas Excel, captura, sellado con unicidad de sello y color, bajas, asignaciones, recepción parcial y resumen SAP. Importar el catálogo oficial localmente antes de capturar. Fase 2 para validación; análisis avanzado y extras corresponden a fases 3 y 4. Python incluido; funciona sin Internet. Extraer todo el ZIP y abrir INICIAR_PRODUCCION.bat. El paquete no incluye datos ni claves precargadas.'})).data;
+                name:'V34.1 · Ajustes de actividades local para validación',prerelease:true,
+                body:'Windows x64 local: registro rápido, revisión simplificada con SAP, plantillas oficiales, sellado solo masivo, panel de sellado y movimientos SAP sin producción individual. Bajas y piezas deshabilitado sin borrar historia. Importar el catálogo oficial localmente antes de capturar. Fase 2 para validación; análisis avanzado y extras corresponden a fases 3 y 4. Python incluido; funciona sin Internet. Extraer todo el ZIP y abrir INICIAR_PRODUCCION.bat. El paquete no incluye datos ni claves precargadas.'})).data;
             }
-            for (const name of ['LABORATORIO_V34_FASE2_WINDOWS.zip','LABORATORIO_V34_FASE2_WINDOWS.sha256.txt']) {
+            for (const name of ['LABORATORIO_V34_1_FASE2_WINDOWS.zip','LABORATORIO_V34_1_FASE2_WINDOWS.sha256.txt']) {
               if (release.assets.some(asset=>asset.name===name)) continue;
               await github.rest.repos.uploadReleaseAsset({...context.repo,release_id:release.id,name,
                 data:fs.readFileSync('dist/'+name),headers:{'content-type':'application/octet-stream'}});

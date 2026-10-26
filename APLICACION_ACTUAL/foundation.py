@@ -338,7 +338,8 @@ def restore_confirm(app, user, data):
             raise p.ApiError('La contraseña de administración no coincide.', 403)
     if digest_file(preview['path']) != preview['sha256']:
         raise p.ApiError('El respaldo cambió después de verificarlo. Crea otra vista previa.', 409)
-    with app.database() as db:was_phase_two=setting(db,'implemented_phase',1)>=2
+    with app.database() as db:
+        was_phase_two=setting(db,'implemented_phase',1)>=2;was_lab=setting(db,'lab_revision',0)>=1
     safety = run_backup(app, user, 'antes_restauracion')
     with app.database() as db:
         db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
@@ -350,6 +351,9 @@ def restore_confirm(app, user, data):
         if was_phase_two:
             import phase2
             phase2.install(app)
+        if was_lab:
+            import labflows
+            labflows.install(app)
         with app.database() as db, p._transaction(db):
             db.execute('DELETE FROM sessions')
             # El usuario anterior puede no existir en la copia: la identidad del

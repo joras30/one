@@ -1,11 +1,12 @@
 # Laboratorio de Medidas — Control de Producción
 
-## Entrega vigente: V34, fase 2 para validación
+## Entrega vigente: V34.1, ajustes de actividades de fase 2 para validación
 
-La fase 1 fue validada. La entrega local habilita catálogo, actividades, captura,
-plantillas Excel, sellado con control permanente de sellos, bajas y piezas,
-asignaciones, recepciones parciales y resumen SAP. Conserva usuarios, auditoría,
-respaldos y restauración de la base anterior. No incluye personas ni datos reales.
+La fase 1 fue validada. La revisión continúa por actividades. V34.1 recupera el
+registro rápido, simplifica revisión técnica, exige SAP y respeta las plantillas
+oficiales. Sellado masivo y movimientos SAP tienen sus propios paneles; SAP no
+se atribuye como producción individual. Bajas y piezas queda deshabilitado sin
+borrar historia. Guía vigente: [V34_1_ACTIVIDADES.md](deploy/V34_1_ACTIVIDADES.md).
 
 Descarga el paquete Windows x64 en [Releases](https://github.com/joras30/one/releases).
 Extrae todo el ZIP y abre `INICIAR_PRODUCCION.bat`; Python viene incluido.

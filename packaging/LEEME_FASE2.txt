@@ -1,5 +1,5 @@
 LABORATORIO DE MEDIDAS - CONTROL DE PRODUCCION
-V34 - FASE 2 PARA VALIDACION - WINDOWS X64
+V34.1 - AJUSTES DE ACTIVIDADES - FASE 2 PARA VALIDACION - WINDOWS X64
 
 1. Extrae TODO el ZIP antes de abrir INICIAR_PRODUCCION.bat.
    Python viene incluido. No necesitas instalar paquetes ni pagar alojamiento.
@@ -45,3 +45,8 @@ Fases pendientes: 3, análisis avanzado/metas/jornadas/reportes; 4, extras
 (cierre diario, etiquetas, acta de conduce, scanner avanzado y monitor).
 
 No se incluyen datos, Excel oficiales, personas ni claves precargadas.
+
+AJUSTES V34.1: Sellado solo por planilla masiva. Movimientos SAP tienen su propia
+carga y panel, sin produccion individual. Bajas y piezas queda deshabilitado.
+Revision, configuracion y limpieza requieren articulo SAP. Planillas oficiales
+sin columnas extras. Boton Registrar actividad disponible en todas las pantallas.

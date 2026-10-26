@@ -59,10 +59,14 @@ with tempfile.TemporaryDirectory(prefix='laboratorio-exe-ficticio-') as temp:
         assert request('/api/p2/catalog/ready',{})[0]==200
         article=request('/api/p2/catalog')[1]['articles'][0]
         event={'activity_id':'sellado','work_date':'2026-10-24','operation_id':'exe-ficticio-1','data':{'serie':'00001','marca':'Marca ficticia','sap':'00010','clasificacion':'Nuevo','sap_config_id':article['id'],'color':'AZUL','sello_1':'000S1','sello_2':'000S2'}}
-        assert request('/api/eventos',event)[0]==200
-        event['operation_id']='exe-ficticio-2';event['data']['serie']='00002'
-        assert request('/api/eventos',event)[0]==409
-        for asset in ['app.js','app.css','table-tools.js','drilldown.js','profile-avatars.js','foundation-ui.js','foundation-ui.css','phase2-ui.js','phase2.css','edesur.png']:
+        assert request('/api/eventos',event)[0]==403
+        preview=request('/api/p2/import/preview',{'activity_id':'sellado','rows':[event['data']|{'FECHA':'2026-10-26','USUARIO':'admin'}]})[1]
+        assert not preview['errors'],preview
+        assert request('/api/p2/import/confirm',{'preview_id':preview['preview_id']})[0]==200
+        duplicate=request('/api/p2/import/preview',{'activity_id':'sellado','rows':[event['data']|{'FECHA':'2026-10-26','USUARIO':'admin'}]})[1]
+        assert duplicate['errors'] and duplicate['errors'][0]['details'].get('seal_conflict')
+        assert request('/api/p2/analysis?activity_id=sellado&desde=2026-10-26&hasta=2026-10-26')[1]['activities'][0]['quantity']==1
+        for asset in ['app.js','app.css','table-tools.js','drilldown.js','profile-avatars.js','foundation-ui.js','foundation-ui.css','phase2-ui.js','labflows-ui.js','phase2.css','edesur.png']:
             assert request('/'+asset)[0]==200,asset
         assert request('/api/base/backup-now',{})[1]['status']=='incompleto'
         assert request('/api/auditoria/integridad')[1]['ok']

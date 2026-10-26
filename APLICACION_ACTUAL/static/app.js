@@ -16,7 +16,7 @@ const activeActivities = () => S.activities.filter((a) => a.active && (isManager
 const personOptions = () => S.users.filter((u) => u.active && u.role !== 'visitante');
 const labels = {serie:'Serie',sap:'Código SAP',marca:'Marca',modelo:'Modelo',sap_config_id:'Configuración SAP',tipo_inspeccion:'Tipo de inspección',fallo:'Fallo detectado',valor_referencia:'Valor de referencia',valor_medido:'Valor medido',tolerancia_pct:'Tolerancia (%)',desviacion_pct:'Desviación (%)',fuera_tolerancia:'Fuera de tolerancia',voltaje:'Voltaje',condicion:'Condición técnica',clasificacion:'Nuevo / recuperado',resultado:'Resultado de revisión',tiempo_minutos:'Tiempo del lote (min)',condicion_visual:'Condición visual',tipo_configuracion:'Tipo de configuración',destino:'Destinatario / destino',tipo_articulo:'Tipo de artículo',numero_orden:'Número de orden',proceso:'Proceso de recepción',cantidad_esperada:'Cantidad esperada',observaciones:'Observaciones',work_date:'Fecha de trabajo',responsible_id:'Responsable',quantity:'Cantidad',state:'Estado',name:'Nombre',active:'Activo',role:'Perfil',activity_ids:'Actividades asignadas'};
 const pages = {
-  operation:['OPERACIÓN','Operación del laboratorio','Registra actividades con validaciones y trazabilidad.'],
+  operation:['REGISTRO','Registro de actividades del laboratorio','Registra actividades con validaciones y trazabilidad.'],
   bulk:['CARGA MASIVA','Plantillas y validación','Revisa todas las filas antes de guardar.'],
   assignments:['ASIGNACIONES','Actividades y permisos','Asignaciones vigentes para técnicos del laboratorio.'],
   scrap:['BAJAS','Bajas y piezas recuperadas','Propuestas, autorizaciones e historial permanente.'],
@@ -35,7 +35,7 @@ const pages = {
   users:['EQUIPO','Personal y accesos','Personas, actividades habilitadas y acceso sencillo.'],
   catalogs:['CATÁLOGOS','SAP, marcas y condiciones','Listas actualizables para mantener una captura consistente.'],
   audit:['CONTROL','Historial de cambios','Correcciones y anulaciones con su motivo y responsable.'],
-  account:['MI CUENTA','Perfil y contraseña','Gestiona tu acceso al sistema.']
+  labstats:['ESTADÍSTICAS','Estadísticas del laboratorio','Producción, movimientos y resultados con datos verificables.'],sealed:['SELLADO','MEDIDORES SELLADOS EN EL LABORATORIO','Importación oficial y análisis del sellado.'],sapmoves:['MOVIMIENTOS SAP','MEDIDORES RECUPERADOS CARGADOS EN SAP','Movimientos por artículo y almacén; sin producción individual.'],account:['MI CUENTA','Perfil y contraseña','Gestiona tu acceso al sistema.']
 };
 
 class ApiError extends Error { constructor(message, status, payload) { super(message); this.status = status; this.payload = payload; } }
@@ -139,7 +139,7 @@ async function loadReferences() {
 }
 async function enterApp(me) {
   if(S.user?.id!==me.user.id){for(const name of ['records-table','recent-records','history-results','audit-table'])$(name)?.replaceChildren();window.LabPhaseTwo?.clear();$('base-profile-card')?.remove();$('profile-avatar-editor')?.remove();S.users=[];}
-  S.phase=Number(me.delivered_phase)||0;S.installation=me.installation_id||'';
+  S.lab=Boolean(me.lab_revision);S.phase=Number(me.delivered_phase)||0;S.installation=me.installation_id||'';
   S.user=me.user; S.production=Boolean(me.production_mode); S.csrf=me.csrf; S.demo=Boolean(me.demo); S.publicDemo=Boolean(me.public_demo); $('auth-view').classList.add('hidden'); $('app-shell').classList.remove('hidden');
   $('account-name').textContent=S.user.name; $('account-role').textContent=roleNames[S.user.role] || S.user.role;
   $('account-avatar').textContent=S.user.name.split(/\s+/).slice(0,2).map((n)=>n[0]).join('').toUpperCase();
@@ -192,7 +192,7 @@ function openQuickGuide(){
   openDialog('Guía rápida · tocar, consultar y volver',`<div class="quick-guide"><ol><li><strong>Elige qué quieres ver.</strong> Abre Filtros, indica las fechas y pulsa Aplicar. Si estás comparando, define A y B y pulsa Generar reporte.</li><li><strong>Toca el número o el gráfico.</strong> Se abre su lista de datos con las fechas y filtros aplicados. Los botones indican qué puedes consultar.</li><li><strong>Encuentra una fila.</strong> Escribe en Buscar en esta tabla. Pulsa un encabezado para ordenar; vuelve a pulsarlo para invertir el orden.</li><li><strong>Consulta el detalle.</strong> Abre el registro o la orden. Usa Volver a la lista o cierra el panel para seguir explorando sin cambiar tus filtros.</li><li><strong>Descarga lo que necesitas.</strong> CSV de esta vista incluye las filas cargadas que coinciden con la búsqueda. Excel y PDF del informe incluyen el alcance completo indicado en sus filtros.</li></ol><h3>Cómo leer las cifras</h3><p><strong>Aprobación:</strong> de 10 revisiones concluidas, si 8 son aptas y 2 no aptas, la aprobación es 80 %. Las pendientes todavía no entran en esa cuenta.</p><p><strong>Cantidades:</strong> cada actividad conserva su unidad: revisiones, medidores o sellos. Hacer dos trabajos al mismo equipo no significa tener dos equipos.</p><p><strong>Semáforos:</strong> 🟢 resultado completo o aprobado; 🟡 falta información o trabajo por concluir; 🔴 revisa los rechazos, vencimientos, excedentes o hallazgos señalados. El texto de cada alerta explica el caso.</p><h3>Lo que puedes consultar</h3><p>El supervisor consulta el equipo completo. El técnico consulta su trabajo autorizado. El visitante ve totales y desgloses generales, sin series ni información personal.</p><h3>Tus datos se conservan</h3><p>Consultar, buscar y ordenar no cambia registros. En la demo del enlace, cada navegador guarda su propia prueba; usa Descargar respaldo para conservar una copia. En la red de oficina, los equipos que abren el servidor principal comparten su base.</p></div>`);
 }
 async function navigate(view) {
-  if(S.production&&S.phase>=2){view=({capture:'operation',import:'bulk',catalogs:'master',dashboard:'operation'})[view]||view;}
+  if(S.production&&S.phase>=2){view=({capture:'operation',import:'bulk',catalogs:'master',dashboard:S.lab?'labstats':'operation'})[view]||view;}
   if(!pages[view]) view='dashboard';
   if(!isManager() && ['activities','import','catalogs','users','audit'].includes(view)) view='dashboard';
   if(isVisitor() && !['dashboard','quality','comparison','account'].includes(view)) view='dashboard';
@@ -205,11 +205,11 @@ async function navigate(view) {
   document.querySelectorAll('.view').forEach((n)=>n.classList.add('hidden')); $(`view-${view}`).classList.remove('hidden');
   document.querySelectorAll('[data-view]').forEach((n)=>n.classList.toggle('active',n.dataset.view===view));
   const title=pages[view]; $('page-eyebrow').textContent=title[0]; $('page-title').textContent=title[1]; $('page-description').textContent=title[2]; $('current-section').textContent=title[1];
-  $('global-filters').classList.toggle('hidden',!['dashboard','records','quality','comparison','receipts'].includes(view)); $('quick-capture').classList.toggle('hidden',S.production || isVisitor() || view==='capture' || S.user?.must_change);
+  $('global-filters').classList.toggle('hidden',!['dashboard','records','quality','comparison','receipts'].includes(view)); $('quick-capture').classList.toggle('hidden',(S.production&&!S.lab) || isVisitor() || view==='capture' || S.user?.must_change || S.user?.must_complete_profile);
   $('filter-from-wrap').classList.toggle('hidden',view==='comparison' || view==='receipts');$('filter-to-wrap').classList.toggle('hidden',view==='comparison' || view==='receipts');$('filter-activity-wrap').classList.toggle('hidden',view==='quality' || view==='receipts');
   updateFilterSummary();
   $('loading-indicator').classList.remove('hidden');
-  try { await ({operation:()=>LabPhaseTwo.operation(),bulk:()=>LabPhaseTwo.bulk(),assignments:()=>LabPhaseTwo.assignments(),scrap:()=>LabPhaseTwo.scrap(),master:()=>LabPhaseTwo.master(),sapload:()=>LabPhaseTwo.sapload(),base:()=>LabFoundation.loadStatus(),dashboard:loadDashboard,quality:loadQuality,comparison:loadComparison,capture:loadCapture,records:loadRecords,history:()=>S.production&&S.phase>=2?LabPhaseTwo.history():Promise.resolve(),activities:loadActivities,import:loadImport,receipts:loadReceipts,goals:loadGoals,users:loadUsers,catalogs:loadCatalogs,audit:loadAudit,account:loadAccount}[view])(); }
+  try { await ({labstats:()=>LabFlows.panel(''),sealed:()=>LabFlows.panel('sellado'),sapmoves:()=>LabFlows.panel('sap_carga'),operation:()=>S.lab?LabFlows.operation():LabPhaseTwo.operation(),bulk:()=>LabPhaseTwo.bulk(),assignments:()=>LabPhaseTwo.assignments(),scrap:()=>LabPhaseTwo.scrap(),master:()=>LabPhaseTwo.master(),sapload:()=>S.lab?LabFlows.panel('sap_carga'):LabPhaseTwo.sapload(),base:()=>LabFoundation.loadStatus(),dashboard:loadDashboard,quality:loadQuality,comparison:loadComparison,capture:loadCapture,records:loadRecords,history:()=>S.production&&S.phase>=2?LabPhaseTwo.history():Promise.resolve(),activities:loadActivities,import:loadImport,receipts:loadReceipts,goals:loadGoals,users:loadUsers,catalogs:loadCatalogs,audit:loadAudit,account:loadAccount}[view])(); }
   catch(error) { if(ticket===S.navigation) showError($('page-error'),error); }
   finally { if(ticket===S.navigation){$('loading-indicator').classList.add('hidden');updateViewHelp(view);window.LabFoundation?.enhance();window.LabDetails?.enhance();window.LabTables?.enhance();} }
 }
@@ -762,7 +762,7 @@ async function init() {
   bindEvents();const day=today();$('filter-from').value=`${day.slice(0,7)}-01`;$('filter-to').value=day;$('capture-date').value=day;
   setComparisonDefaults();
   setFiltersCollapsed(true);
-  try {const me=await api('/api/me');S.production=Boolean(me.production_mode);S.demo=Boolean(me.demo);S.publicDemo=Boolean(me.public_demo);S.setup=Boolean(me.setup_required);S.phase=Number(me.delivered_phase)||0;S.installation=me.installation_id||'';if(me.logged)await enterApp(me);else showAuth();}
+  try {const me=await api('/api/me');S.production=Boolean(me.production_mode);S.demo=Boolean(me.demo);S.publicDemo=Boolean(me.public_demo);S.setup=Boolean(me.setup_required);S.lab=Boolean(me.lab_revision);S.phase=Number(me.delivered_phase)||0;S.installation=me.installation_id||'';if(me.logged)await enterApp(me);else showAuth();}
   catch(error){showAuth(false);showError($('auth-error'),error);}
 }
 init();

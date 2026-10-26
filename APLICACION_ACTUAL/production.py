@@ -738,7 +738,7 @@ def _filters(user, query, allow_visitor=False):
         values.append(_text(query["unit"], "Unidad", 120, True))
     if str(query.get("voltage_missing", "")) == "1":
         clauses.append("COALESCE(json_extract(e.data_json,'$.voltaje'),'')=''")
-    for param, field in (("sap", "sap"), ("voltage", "voltaje"), ("condition", "condicion"), ("brand", "marca"), ("model", "modelo"), ("valuation", "clasificacion")):
+    for param, field in (("sap", "sap"), ("voltage", "voltaje"), ("condition", "condicion"), ("brand", "marca"), ("model", "modelo"), ("valuation", "clasificacion"), ("warehouse", "almacen")):
         if query.get(param):
             clauses.append(f"json_extract(e.data_json,'$.{field}')=?")
             values.append(_text(query[param], param, 150))
@@ -835,11 +835,11 @@ def _detail_selection(rows, query):
         from analytics import _calibration
         return [row for row in rows if (value := _calibration(row["data"])) is not None
                 and (metric == "calibrations" or value[1])]
-    results = {"approved": {"apto"}, "rejected": {"no apto"}, "pending": {"pendiente"},
-               "evaluated": {"apto", "no apto"}}
+    results = {"approved": {"apto", "reutilizable"}, "rejected": {"no apto", "no reutilizable"}, "pending": {"pendiente"},
+               "evaluated": {"apto", "no apto", "reutilizable", "no reutilizable"}}
     if metric in results:
         return [row for row in rows if _fold(row["data"].get("resultado", "")) in results[metric]]
-    excluded = {"apto", "no apto", "pendiente"} if metric == "without_result" else {"apto", "no apto"}
+    excluded = {"apto", "no apto", "reutilizable", "no reutilizable", "pendiente"} if metric == "without_result" else {"apto", "no apto", "reutilizable", "no reutilizable"}
     return [row for row in rows if _fold(row["data"].get("resultado", "")) not in excluded]
 
 
