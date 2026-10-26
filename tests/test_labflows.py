@@ -20,7 +20,7 @@ class LabFlowsTests(PhaseTwoTests):
   with app.database() as db:
    for aid in lab.OFFICIAL:
     raw=q.template(db,self.admin,aid);w=openpyxl.load_workbook(io.BytesIO(raw));s=w['Captura']
-    self.assertEqual(s['A1'].value,lab.TITLES[aid]);self.assertEqual([c.value for c in s[2]],[v for _,v in lab.OFFICIAL[aid]])
+    self.assertEqual(s['A1'].value,lab.TITLES[aid]);self.assertEqual([c.value for c in s[3]],[v for _,v in lab.OFFICIAL[aid]])
     self.assertTrue(s.data_validations.dataValidation)
  def test_sealing_is_bulk_only_and_assigns_row_employee(self):
   with self.assertRaises(p.ApiError):self.event(activity='sellado')

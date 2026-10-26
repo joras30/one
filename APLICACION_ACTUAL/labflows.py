@@ -105,13 +105,18 @@ def decorate_template(raw,aid):
    if name=='xl/worksheets/sheet1.xml':
     root=ET.fromstring(data);sd=root.find(tag('sheetData'))
     for row in sd:
-     row.set('r',str(int(row.get('r'))+1))
-     for cell in row:cell.set('r',re.sub(r'\d+$',str(int(re.search(r'\d+$',cell.get('r'))[0])+1),cell.get('r')))
+     row.set('r',str(int(row.get('r'))+2))
+     for cell in row:cell.set('r',re.sub(r'\d+$',str(int(re.search(r'\d+$',cell.get('r'))[0])+2),cell.get('r')))
     row=ET.Element(tag('row'),r='1',ht='25',customHeight='1');cell=ET.SubElement(row,tag('c'),r='A1',t='inlineStr',s='1');ET.SubElement(ET.SubElement(cell,tag('is')),tag('t')).text=TITLES[aid];sd.insert(0,row)
     for el in root.iter():
-     if el.get('sqref'):el.set('sqref',re.sub(r'([A-Z]+)(\d+)',lambda m:m[1]+str(int(m[2])+1),el.get('sqref')))
+     if el.get('sqref'):el.set('sqref',re.sub(r'([A-Z]+)(\d+)',lambda m:m[1]+str(int(m[2])+2),el.get('sqref')))
+    for element in root.iter():
+     if element.tag==tag('autoFilter') and element.get('ref'):element.set('ref',re.sub(r'([A-Z]+)(\d+)',lambda m:m[1]+str(int(m[2])+2),element.get('ref')))
+     if element.tag==tag('pane'):
+      if element.get('ySplit'):element.set('ySplit',str(int(element.get('ySplit'))+2))
+      if element.get('topLeftCell'):element.set('topLeftCell',re.sub(r'([A-Z]+)(\d+)',lambda m:m[1]+str(int(m[2])+2),element.get('topLeftCell')))
     dim=root.find(tag('dimension'))
-    if dim is not None:dim.set('ref',f'A1:{d._column(len(OFFICIAL[aid]))}502')
+    if dim is not None:dim.set('ref',f'A1:{d._column(len(OFFICIAL[aid]))}503')
     merged=ET.Element(tag('mergeCells'),count='1');ET.SubElement(merged,tag('mergeCell'),ref='A1:'+d._column(len(OFFICIAL[aid]))+'1')
     idx=list(root).index(root.find(tag('dataValidations'))) if root.find(tag('dataValidations')) is not None else len(root)-1;root.insert(idx,merged)
     data=ET.tostring(root,encoding='utf-8',xml_declaration=True)

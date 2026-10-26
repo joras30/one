@@ -474,7 +474,7 @@ def row_payload(db,user,activity_id,row):
     if labflows.enabled(db):normalized=labflows.adapt_row(db,user,activity_id,normalized)
     person=user['id']
     if normalized.get('responsible'):
-        code=p._text(normalized['responsible'],'Código de empleado',60,True)
+        code=p._text(normalized['responsible'],'Código o nombre completo del empleado',150 if labflows.enabled(db) else 60,True)
         target=db.execute('SELECT id FROM users WHERE username=? AND active=1',(code,)).fetchone()
         if not target and labflows.enabled(db):
             matches=[row for row in db.execute('SELECT id,name FROM users WHERE active=1') if p._fold(row['name'])==p._fold(code)]
