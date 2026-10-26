@@ -4,3 +4,5 @@
 
 [data-theme] .p2-tabs [aria-selected=true]{background:var(--active-bg);border-color:var(--accent);color:var(--ink)}
 .lab-quick{position:fixed;right:22px;bottom:20px;z-index:25;box-shadow:0 4px 18px #0003}#lab-charts svg{display:block;width:100%;height:auto}#lab-charts [role=button]{cursor:pointer}#lab-charts [role=button]:focus{outline:3px solid var(--focus)}#lab-analysis-result>.metrics-grid{margin:20px 0}#lab-analysis-result .metric-card{text-align:left;cursor:pointer}#lab-analysis-result .metric-card span{display:block;line-height:1.7}#lab-inline-bulk{margin-top:18px}.nav-item{white-space:normal;line-height:1.5}#lab-catalog-values{max-height:420px;overflow:auto;margin:18px 0}#lab-analysis-result .export-actions{gap:8px;margin-top:22px}@media(max-width:600px){.lab-quick{right:12px;bottom:12px;font-size:12px;padding:12px}#lab-analysis-result .metrics-grid{grid-template-columns:1fr}}
+
+.toast-container{bottom:90px}
