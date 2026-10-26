@@ -48,7 +48,7 @@ class LabFlowsTests(PhaseTwoTests):
    result=lab.analysis(db,self.admin,{'desde':'2026-10-26','hasta':'2026-10-27'});self.assertEqual(result['ranking'][0]['responsible_id'],self.tech['id']);self.assertEqual(result['quality']['approval_pct'],100);self.assertEqual(result['matrix'][0]['average'],1);self.assertEqual(len(result['dates']),2)
  def test_official_review_file_and_source_preserved_on_revalidation(self):
   import openpyxl
-  w=openpyxl.Workbook();sheet=w.active;sheet.append([lab.TITLES['revision']]);sheet.append([v for _,v in lab.OFFICIAL['revision']]);sheet.append(['1','2026-10-26',self.tech['username'],'000123','Marca ficticia','00123','240V','Bueno','Ficticio']);b=io.BytesIO();w.save(b)
+  w=openpyxl.Workbook();sheet=w.active;sheet.append([lab.TITLES['revision']]);sheet.append([v for _,v in lab.OFFICIAL['revision']]);sheet.append(['1','2026-10-26',self.tech['username'],'000123','Marca ficticia','00123','240V','Bueno','Ficticio']);sheet.append(['2','','','','','','','','']);b=io.BytesIO();w.save(b)
   data={'activity_id':'revision','filename':'oficial.xlsx','content':base64.b64encode(b.getvalue()).decode(),'context':{'clasificacion':'Nuevo','resultado':'Reutilizable'}}
   with app.database() as db:
    preview=q.handle_post(db,self.admin,'/api/p2/import/preview',data);self.assertFalse(preview['errors'],preview)
