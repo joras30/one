@@ -56,6 +56,7 @@ async function api(path, payload) {
 }
 function toast(message, kind='success') {
   const node=document.createElement('div'); node.className=`toast ${kind}`; node.setAttribute('role',kind==='error'?'alert':'status'); node.textContent=message;
+  while($('toast-container').children.length>=2)$('toast-container').firstElementChild.remove();
   $('toast-container').append(node); setTimeout(()=>node.remove(),6500);
 }
 function showError(node, error) { node.textContent=error.message || String(error); node.classList.remove('hidden'); }
