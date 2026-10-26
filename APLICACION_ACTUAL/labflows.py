@@ -135,39 +135,39 @@ def analysis(db,user,query):
  grouped={};daily={};monthly={};tech={};sap={};outcomes=Counter();movements=[];persondays=defaultdict(Counter)
  for row in rows:
   v=json.loads(row['data_json']);aid=row['activity_id'];unit=row['unit'];qty=row['quantity']
-  key=aid
+  key=(aid,unit)
   if aid=='sap_carga':movements.append({**v,'quantity':qty,'imported_by':row['recorded_by']})
-  else:persondays[(aid,row['responsible_id'])][row['work_date']]+=qty
+  else:persondays[(aid,unit,row['responsible_id'])][row['work_date']]+=qty
   if key not in grouped:grouped[key]={'activity_id':aid,'label':row['activity_name'],'unit':unit,'quantity':0,'events':0,'series':set()}
   grouped[key]['quantity']+=qty;grouped[key]['events']+=1
   if v.get('serie'):grouped[key]['series'].add(v['serie'])
-  for store,key in [(daily,(aid,row['work_date'])),(monthly,(aid,row['work_date'][:7],row['responsible_id'])),(tech,(aid,row['responsible_id'])),(sap,(aid,v.get('sap',''),v.get('clasificacion',''),v.get('almacen','')))]:
+  for store,key in [(daily,(aid,unit,row['work_date'])),(monthly,(aid,unit,row['work_date'][:7],row['responsible_id'])),(tech,(aid,unit,row['responsible_id'])),(sap,(aid,unit,v.get('sap',''),v.get('clasificacion',''),v.get('almacen','')))]:
    if aid=='sap_carga' and store is tech:continue
    if aid=='sap_carga' and store is monthly:continue
    if key not in store:store[key]={'activity_id':aid,'activity':row['activity_name'],'unit':unit,'quantity':0,'technician':row['technician'],'code':row['code'],'responsible_id':row['responsible_id']}
    store[key]['quantity']+=qty
   if aid=='revision':outcomes[p._fold(v.get('resultado',''))]+=1
  prev_end=date.fromisoformat(start)-timedelta(days=1);prev_start=prev_end-(date.fromisoformat(end)-date.fromisoformat(start))
- previous={row[0]:row[1] for row in db.execute('SELECT e.activity_id,SUM(e.quantity) FROM production_events e WHERE '+where+' GROUP BY e.activity_id',[prev_start.isoformat(),prev_end.isoformat(),*params[2:]])}
+ previous={(row[0],row[1]):row[2] for row in db.execute('SELECT e.activity_id,e.unit,SUM(e.quantity) FROM production_events e WHERE '+where+' GROUP BY e.activity_id,e.unit',[prev_start.isoformat(),prev_end.isoformat(),*params[2:]])}
  activities=[]
  for v in grouped.values():
-  v['unique_series']=len(v.pop('series'));v['previous']=previous.get(v['activity_id'],0);v['variation']=v['quantity']-v['previous'];v['growth_pct']=v['variation']/v['previous']*100 if v['previous'] else None;activities.append(v)
+  v['unique_series']=len(v.pop('series'));v['previous']=previous.get((v['activity_id'],v['unit']),0);v['variation']=v['quantity']-v['previous'];v['growth_pct']=v['variation']/v['previous']*100 if v['previous'] else None;activities.append(v)
  days=[]
- for (aid,day),v in daily.items():days.append({**v,'date':day})
- months=[{**v,'month':month} for (aid,month,person),v in monthly.items()]
- ranking=sorted(tech.values(),key=lambda v:(v['activity_id'],-v['quantity'],v['code']))
- for aid in grouped:
-  group=[v for v in ranking if v['activity_id']==aid];last=None;rank=0
+ for (aid,unit,day),v in daily.items():days.append({**v,'date':day})
+ months=[{**v,'month':month} for (aid,unit,month,person),v in monthly.items()]
+ ranking=sorted(tech.values(),key=lambda v:(v['activity_id'],v['unit'],-v['quantity'],v['code']))
+ for aid,unit in grouped:
+  group=[v for v in ranking if v['activity_id']==aid and v['unit']==unit];last=None;rank=0
   for idx,v in enumerate(group,1):
    if v['quantity']!=last:rank=idx;last=v['quantity']
    v['rank']=rank
  span=(date.fromisoformat(end)-date.fromisoformat(start)).days
  dayslist=[(date.fromisoformat(start)+timedelta(days=n)).isoformat() for n in range(span+1)] if span<31 else [];matrix=[]
  for v in ranking:
-  counts=persondays[(v['activity_id'],v['responsible_id'])]
+  counts=persondays[(v['activity_id'],v['unit'],v['responsible_id'])]
   effective=sum(n>0 for n in counts.values());matrix.append({**v,'days':dict(counts),'effective_days':effective,'average':v['quantity']/effective if effective else None})
  approved=outcomes['reutilizable']+outcomes['apto'];rejected=outcomes['no reutilizable']+outcomes['no apto'];evaluated=approved+rejected
- return {'from':start,'to':end,'movements':movements,'matrix_available':span<31,'previous_from':prev_start.isoformat(),'previous_to':prev_end.isoformat(),'activity_id':activity,'events':len(rows),'activities':activities,'daily':days,'monthly':months,'ranking':ranking,'dates':dayslist,'matrix':matrix,'sap':[{**v,'sap':code,'valuation':val,'warehouse':warehouse} for (aid,code,val,warehouse),v in sap.items()],'quality':{'approved':approved,'rejected':rejected,'pending':sum(outcomes.values())-evaluated,'evaluated':evaluated,'approval_pct':approved/evaluated*100 if evaluated else None},'note':'Unidades separadas por actividad. SAP registra movimientos importados: no se mezcla ni se vuelve a contar como sellado. Promedio individual: días con producción efectiva; la asistencia aún no está integrada.'}
+ return {'from':start,'to':end,'movements':movements,'matrix_available':span<31,'previous_from':prev_start.isoformat(),'previous_to':prev_end.isoformat(),'activity_id':activity,'events':len(rows),'activities':activities,'daily':days,'monthly':months,'ranking':ranking,'dates':dayslist,'matrix':matrix,'sap':[{**v,'sap':code,'valuation':val,'warehouse':warehouse} for (aid,unit,code,val,warehouse),v in sap.items()],'quality':{'approved':approved,'rejected':rejected,'pending':sum(outcomes.values())-evaluated,'evaluated':evaluated,'approval_pct':approved/evaluated*100 if evaluated else None},'note':'Unidades separadas por actividad. SAP registra movimientos importados: no se mezcla ni se vuelve a contar como sellado. Promedio individual: días con producción efectiva; la asistencia aún no está integrada.'}
 
 def report(data,kind):
  if kind=='sap':
@@ -177,7 +177,7 @@ def report(data,kind):
   headers=['Actividad','Unidad','Código','Técnico',*data['dates'],'Total','Días efectivos','Promedio individual']
   rows=[[v['activity'],v['unit'],v['code'],v['technician'],*[v['days'].get(day,0) for day in data['dates']],v['quantity'],v['effective_days'],round(v['average'],2) if v['average'] is not None else 'Sin base'] for v in data['matrix']]
   for activity in data['activities']:
-   totals=[sum(v['days'].get(day,0) for v in data['matrix'] if v['activity_id']==activity['activity_id']) for day in data['dates']]
+   totals=[sum(v['days'].get(day,0) for v in data['matrix'] if v['activity_id']==activity['activity_id'] and v['unit']==activity['unit']) for day in data['dates']]
    rows.append([activity['label'],activity['unit'],'','TOTAL GENERAL',*totals,activity['quantity'],'',''])
  elif kind=='monthly':headers=['Actividad','Unidad','Mes','Código','Técnico','Cantidad'];rows=[[v['activity'],v['unit'],v['month'],v['code'],v['technician'],v['quantity']] for v in data['monthly']]
  else:headers=['Actividad','Unidad','Puesto','Código','Técnico','Cantidad'];rows=[[v['activity'],v['unit'],v['rank'],v['code'],v['technician'],v['quantity']] for v in data['ranking']]

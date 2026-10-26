@@ -64,6 +64,13 @@ class LabFlowsTests(PhaseTwoTests):
    other=lab.analysis(db,self.other,{'desde':'2026-10-26','hasta':'2026-10-27'});self.assertEqual(other['events'],0)
    big=lab.analysis(db,self.admin,{'desde':'2026-01-01','hasta':'2026-10-27'})
    with self.assertRaises(p.ApiError):lab.report(big,'daily')
+ def test_historical_units_are_not_added_or_ranked_together(self):
+  self.event(data={'sap':'00123','clasificacion':'Nuevo'})
+  with app.database() as db, p._transaction(db):
+   a=p._activity(db,'revision');p._save_activity(db,self.admin,{'id':'revision','name':a['name'],'mode':a['mode'],'unit':'otra unidad','fields':a['fields'],'active':True})
+  self.event(serial='00009',day='2026-10-26',data={'sap':'00123','clasificacion':'Nuevo'})
+  with app.database() as db:
+   result=lab.analysis(db,self.admin,{'desde':'2026-10-24','hasta':'2026-10-26'});self.assertEqual(len(result['activities']),2);self.assertEqual([v['quantity'] for v in result['activities']],[1,1]);self.assertEqual([v['rank'] for v in result['ranking']],[1,1])
 # Se hereda la preparación, no los casos de la especificación anterior.
 for name in list(vars(PhaseTwoTests)):
  if name.startswith('test_') and name not in vars(LabFlowsTests):setattr(LabFlowsTests,name,None)
