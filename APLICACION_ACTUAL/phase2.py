@@ -476,7 +476,11 @@ def row_payload(db,user,activity_id,row):
     if normalized.get('responsible'):
         code=p._text(normalized['responsible'],'Código de empleado',60,True)
         target=db.execute('SELECT id FROM users WHERE username=? AND active=1',(code,)).fetchone()
-        if not target:raise p.ApiError('Código de empleado no encontrado.')
+        if not target and labflows.enabled(db):
+            matches=[row for row in db.execute('SELECT id,name FROM users WHERE active=1') if p._fold(row['name'])==p._fold(code)]
+            if len(matches)==1:target=matches[0]
+            elif len(matches)>1:raise p.ApiError('El nombre coincide con varias personas. Usa el código de empleado para evitar una atribución equivocada.')
+        if not target:raise p.ApiError('Empleado no encontrado. Usa su código o su nombre completo exacto.')
         person=target['id']
         if user['role']=='tecnico' and person!=user['id']:raise p.ApiError('El técnico solo registra su propia producción.',403)
     if activity_id=='bajas':

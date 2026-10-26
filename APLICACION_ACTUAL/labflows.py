@@ -176,4 +176,7 @@ def report(data,kind):
    rows.append([activity['label'],activity['unit'],'','TOTAL GENERAL',*totals,activity['quantity'],'',''])
  elif kind=='monthly':headers=['Actividad','Unidad','Mes','Código','Técnico','Cantidad'];rows=[[v['activity'],v['unit'],v['month'],v['code'],v['technician'],v['quantity']] for v in data['monthly']]
  else:headers=['Actividad','Unidad','Puesto','Código','Técnico','Cantidad'];rows=[[v['activity'],v['unit'],v['rank'],v['code'],v['technician'],v['quantity']] for v in data['ranking']]
+ if kind!='daily':
+  for activity in data['activities']:
+   if activity['activity_id']!='sap_carga':rows.append([activity['label'],activity['unit'],'','','TOTAL GENERAL',activity['quantity']])
  return headers,rows,'Producción del laboratorio · '+data['from']+' a '+data['to']

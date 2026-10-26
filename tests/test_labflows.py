@@ -24,7 +24,7 @@ class LabFlowsTests(PhaseTwoTests):
     self.assertTrue(s.data_validations.dataValidation)
  def test_sealing_is_bulk_only_and_assigns_row_employee(self):
   with self.assertRaises(p.ApiError):self.event(activity='sellado')
-  row={'MEDIDOR':'000009','MARCA':'Marca ficticia','ARTICULO':'00123','MOVIMIENTO':'501','USUARIO':self.tech['username'],'FECHA':'2026-10-26','TIPO':'Nuevo','COLOR':'AZUL','SELLO #1':'001A','SELLO #2':'001B'}
+  row={'MEDIDOR':'000009','MARCA':'Marca ficticia','ARTICULO':'00123','MOVIMIENTO':'501','USUARIO':self.tech['name'],'FECHA':'2026-10-26','TIPO':'Nuevo','COLOR':'AZUL','SELLO #1':'001A','SELLO #2':'001B'}
   with app.database() as db:
    preview=q.handle_post(db,self.admin,'/api/p2/import/preview',{'activity_id':'sellado','rows':[row]});self.assertFalse(preview['errors'],preview)
    q.handle_post(db,self.admin,'/api/p2/import/confirm',{'preview_id':preview['preview_id']});r=db.execute('SELECT * FROM production_events').fetchone();self.assertEqual(r['responsible_id'],self.tech['id']);self.assertEqual(r['recorded_by'],self.admin['id'])
