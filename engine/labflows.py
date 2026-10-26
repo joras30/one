@@ -89,6 +89,7 @@ def read_official(db,user,aid,data):
  if not isinstance(context,dict):raise p.ApiError('Parámetros de carga inválidos.')
  result=[]
  for row in rows:
+  if aid=='revision' and not any(str(value).strip() for key,value in row.items() if d.normalize_header(key)!='numero'):continue
   n=adapt_row(db,user,aid,{d.normalize_header(k):v for k,v in row.items()},context)
   if aid=='sap_carga':n['responsible']=user['username'];n['delegation_reason']=''
   result.append(n)
